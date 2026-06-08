@@ -1,27 +1,30 @@
 import React, { useEffect, useState } from 'react';
 import { getWubLabzHttpUrl, getWubLabzWsUrl, isMockMode } from './env.js';
-import { WubWebSocketClient } from './WebSocketClient.js';
+import { WubWebSocketClient, type WubConnectionStatus } from './WebSocketClient.js';
 
 export const EngineMonitor: React.FC = () => {
-  const [status, setStatus] = useState<'connecting' | 'open' | 'closed' | 'error'>('closed');
+  const [status, setStatus] = useState<WubConnectionStatus>('idle');
   const [latency, setLatency] = useState(0);
   const [engineReady, setEngineReady] = useState(false);
   const [emergencyStopped, setEmergencyStopped] = useState(false);
   const [health, setHealth] = useState<any>(null);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [diagnostics, setDiagnostics] = useState<any>(null);
 
   useEffect(() => {
     const client = new WubWebSocketClient();
     
-    const unbindStatus = client.onStatusChange((s) => {
+    const unbindStatus = client.onStatusChange((s, err) => {
       setStatus(s);
-      if (s === 'open') setLastError(null);
+      if (s === 'connected') setLastError(null);
+      if (err) setLastError(err);
     });
 
     const unbindEvent = client.onEvent((event) => {
       if (event.type === 'ENGINE_STATUS') {
         setEngineReady(event.payload.engineReady);
         setEmergencyStopped(event.payload.emergencyStopped);
+        setDiagnostics(event.payload);
       }
       if (event.type === 'HEARTBEAT') {
         setLatency(client.getLatency());
@@ -49,7 +52,7 @@ export const EngineMonitor: React.FC = () => {
     return () => {
       unbindStatus();
       unbindEvent();
-      client.close();
+      client.disconnect();
       clearInterval(interval);
     };
   }, []);
@@ -71,7 +74,7 @@ export const EngineMonitor: React.FC = () => {
         <strong>WS URL:</strong> <span>{getWubLabzWsUrl()}</span>
         
         <strong>Socket Status:</strong> 
-        <span style={{ color: status === 'open' ? 'green' : 'red', fontWeight: 'bold' }}>
+        <span style={{ color: status === 'connected' ? 'green' : 'red', fontWeight: 'bold' }}>
           {status.toUpperCase()}
         </span>
 
@@ -82,7 +85,20 @@ export const EngineMonitor: React.FC = () => {
 
         <strong>Latency:</strong> <span>{latency}ms</span>
         <strong>Engine Ready:</strong> <span>{engineReady ? 'YES' : 'NO'}</span>
+        <strong>Connections:</strong> <span>{diagnostics?.activeConnectionCount || 0}</span>
+        <strong>Transport:</strong> <span>{diagnostics?.transportState?.toUpperCase() || 'STOPPED'}</span>
+        <strong>Scene:</strong> <span>{diagnostics?.currentScene || '---'}</span>
         <strong>E-Stop:</strong> <span style={{ color: emergencyStopped ? 'red' : 'inherit' }}>{emergencyStopped ? 'STOPPED' : 'CLEAR'}</span>
+      </div>
+
+      <div style={{ marginTop: '1rem', borderTop: '1px solid #ddd', paddingTop: '1rem' }}>
+          <strong>WubPad Pairing Instructions:</strong>
+          <div style={{ fontSize: '0.75rem', marginTop: '0.25rem', color: '#555' }}>
+              1. Open WubPad UI in a mobile or tablet browser.<br/>
+              2. Go to SETTINGS.<br/>
+              3. Enter Engine URL: <code>{getWubLabzWsUrl()}</code><br/>
+              4. Tap CONNECT.
+          </div>
       </div>
 
       {lastError && (

@@ -50,9 +50,14 @@ export class RuntimeController {
       pendingMacroCount: getPendingMacroCount(),
       currentScene: this.sceneScheduler.getCurrentScene(),
       queuedScene: this.sceneScheduler.getQueuedScene(),
-      busLevels: this.engine.busGraph.getBusLevels()
+      busLevels: this.engine.busGraph.getBusLevels(),
+      activeConnectionCount: (this as any).activeConnectionCount || 0
     });
     return this.diagnostics.getDiagnostics();
+  }
+
+  setActiveConnectionCount(count: number) {
+    (this as any).activeConnectionCount = count;
   }
 
   handleIntent(event: ValidatedWubLabzEvent) {

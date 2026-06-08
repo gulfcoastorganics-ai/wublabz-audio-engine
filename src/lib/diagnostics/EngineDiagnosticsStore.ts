@@ -28,6 +28,7 @@ export interface EngineDiagnostics {
   motifCount?: number;
   recallCount?: number;
   busLevels?: Record<string, number>;
+  activeConnectionCount?: number;
 }
 
 export class EngineDiagnosticsStore {

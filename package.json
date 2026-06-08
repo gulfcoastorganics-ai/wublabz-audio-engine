@@ -9,10 +9,13 @@
   },
   "scripts": {
     "preinstall": "if [ \"$npm_config_user_agent\" != \"\" ]; then if ! echo \"$npm_config_user_agent\" | grep -q \"npm/\"; then echo \"\nERROR: This project is standardized on npm. Use 'npm install'.\n\" && exit 1; fi; fi",
+    "wublabz": "tsx src/wublabz/server.ts",
+    "wubpad": "vite --host 0.0.0.0 --port 3000",
+    "dev": "concurrently -n \"ENGINE,PAD\" -c \"cyan,magenta\" \"npm run wublabz\" \"npm run wubpad\"",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --config vitest.config.ts",
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.app.json --noEmit",
     "server": "tsx src/wublabz/server.ts"
   },
   "main": "./dist/wublabz/index.js",
@@ -29,12 +32,18 @@
     "fastify": "^4.28.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "tone": "^15.1.22",
     "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^25.0.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
+    "concurrently": "^10.0.3",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3",
+    "vite": "^8.0.16",
     "vitest": "^3.2.4"
   }
 }

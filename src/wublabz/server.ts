@@ -19,6 +19,8 @@ async function startServer() {
   const runtimeController = new RuntimeController();
   runtimeController.initializeRuntime();
 
+  let activeConnections = 0;
+
   // Health check endpoint
   server.get('/health', async () => {
     return {
@@ -26,12 +28,15 @@ async function startServer() {
       service: 'wublabz',
       engineReady: runtimeController.getRuntimeDiagnostics().engineReady,
       wsPath: '/',
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      connections: activeConnections
     };
   });
 
   // WebSocket connection handler
   server.get('/', { websocket: true }, (connection, req) => {
+    activeConnections++;
+    runtimeController.setActiveConnectionCount(activeConnections);
     const clientId = randomUUID();
     server.log.info(`Client connected: ${clientId}`);
 
@@ -83,6 +88,8 @@ async function startServer() {
     });
 
     connection.socket.on('close', () => {
+      activeConnections--;
+      runtimeController.setActiveConnectionCount(activeConnections);
       server.log.info(`Client disconnected: ${clientId}`);
       clearInterval(telemetryInterval);
     });
@@ -94,7 +101,17 @@ async function startServer() {
 
   try {
     const address = await server.listen({ port: PORT, host: '0.0.0.0' });
-    console.log(`WubLabz Backend running at ${address}`);
+    console.log(`
+--- WUBLABZ ENGINE STARTED ---
+Server URL: ${address}
+WebSocket URL: ws://localhost:${PORT}/
+Health Check: ${address}/health
+Mode: ${isMockMode() ? 'MOCK' : 'LIVE'}
+
+WubPad Connection: 
+Open WubPad UI and set Engine URL to: ws://localhost:${PORT}/
+------------------------------
+`);
   } catch (err) {
     server.log.error(err);
     process.exit(1);
@@ -102,6 +119,9 @@ async function startServer() {
 }
 
 startServer();
+
+// Re-import isMockMode for logging
+import { isMockMode } from '../wubpad-integration/env.js';
 
 function toMessageText(message: unknown): string {
   if (typeof message === 'string') {
