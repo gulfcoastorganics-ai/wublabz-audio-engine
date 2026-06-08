@@ -1,7 +1,7 @@
 import { WubLabzEngine } from '../lib/WubLabzEngine.js';
 import { EngineDiagnosticsStore } from '../lib/diagnostics/EngineDiagnosticsStore.js';
 import { ModulationAdapter } from '../lib/audio/modulationAdapter.js';
-import { runPerformanceMacro, cancelAllPendingMacros } from '../lib/audio/performanceMacros.js';
+import { runPerformanceMacro, cancelAllPendingMacros, getPendingMacroCount } from '../lib/audio/performanceMacros.js';
 import { SceneScheduler } from '../lib/playback/sceneScheduler.js';
 import type {
   ModulationPayload,
@@ -42,9 +42,11 @@ export class RuntimeController {
       currentPhrase: snapshot.currentPhrase,
       scheduledEventCount: this.engine.transport.getScheduledEvents().length,
       activeModulationCount: this.modulationAdapter.getActiveModulationCount(),
+      registeredBusCount: this.engine.busGraph.getRegisteredBusCount(),
+      registeredModulationTargetCount: this.engine.busGraph.getRegisteredModulationTargetCount(),
+      pendingMacroCount: getPendingMacroCount(),
       currentScene: this.sceneScheduler.getCurrentScene(),
       queuedScene: this.sceneScheduler.getQueuedScene(),
-      // Track pending macros if you want to extend EngineDiagnostics in the future
     });
     return this.diagnostics.getDiagnostics();
   }
@@ -160,7 +162,9 @@ export class RuntimeController {
       queuedScene: '',
       currentScene: '',
       activeModulationCount: 0,
+      pendingMacroCount: 0,
       lastSchedulerError: null,
+      lastRouteError: null,
       lastAudioError: null,
       lastModulationError: null,
       lastSceneError: null,
@@ -175,4 +179,3 @@ export class RuntimeController {
     cancelAllPendingMacros();
   }
 }
-

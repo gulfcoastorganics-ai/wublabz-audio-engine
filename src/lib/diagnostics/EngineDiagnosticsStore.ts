@@ -11,10 +11,13 @@ export interface EngineDiagnostics {
   queuedScene: string;
   activeModulationCount: number;
   registeredBusCount: number;
+  registeredModulationTargetCount: number;
+  pendingMacroCount: number;
   scheduledEventCount: number;
   latencyMs: number;
   emergencyStopped: boolean;
   lastSchedulerError: string | null;
+  lastRouteError: string | null;
   lastAudioError: string | null;
   lastModulationError: string | null;
   lastSceneError: string | null;
@@ -38,10 +41,13 @@ export class EngineDiagnosticsStore {
     queuedScene: '',
     activeModulationCount: 0,
     registeredBusCount: 0,
+    registeredModulationTargetCount: 0,
+    pendingMacroCount: 0,
     scheduledEventCount: 0,
     latencyMs: 0,
     emergencyStopped: false,
     lastSchedulerError: null,
+    lastRouteError: null,
     lastAudioError: null,
     lastModulationError: null,
     lastSceneError: null,
@@ -65,4 +71,3 @@ export class EngineDiagnosticsStore {
     this.update(snapshot);
   }
 }
-

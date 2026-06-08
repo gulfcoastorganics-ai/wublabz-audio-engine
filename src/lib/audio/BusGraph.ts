@@ -3,6 +3,13 @@ import { getModulationTarget, MODULATION_REGISTRY } from './modulationRegistry.j
 
 // Fallback Tone.js mock or access (since full types aren't available in this project setup)
 const Tone = (globalThis as any).Tone || { now: () => Date.now() / 1000, Destination: {} };
+export type PublicAudioBusName = AudioBusName | 'drums' | 'music' | 'vocals';
+
+const PUBLIC_BUS_ALIASES: Record<'drums' | 'music' | 'vocals', AudioBusName> = {
+  drums: 'drum',
+  music: 'melody',
+  vocals: 'vocal'
+};
 
 export class BusGraph {
   public ready = false;
@@ -15,6 +22,7 @@ export class BusGraph {
   private masterGainNode: any;
 
   private inputBuses: Record<AudioBusName, any>;
+  private toneRuntime: any;
 
   constructor() {
     this.inputBuses = {} as Record<AudioBusName, any>;
@@ -23,6 +31,7 @@ export class BusGraph {
   async initialize(toneRuntime: any) {
     if (this.ready || !toneRuntime) return;
 
+    this.toneRuntime = toneRuntime;
     this.preMasterNode = new toneRuntime.Gain(1);
     this.filterNode = new toneRuntime.Filter({
       frequency: MODULATION_REGISTRY.filter.cutoff.defaultValue,
@@ -79,8 +88,12 @@ export class BusGraph {
     this.ready = true;
   }
 
-  getBus(name: AudioBusName): any {
-    return this.inputBuses[name];
+  getBus(name: PublicAudioBusName): any {
+    return this.inputBuses[resolvePublicBusName(name)];
+  }
+
+  getRegisteredBusCount(): number {
+    return Object.keys(this.inputBuses).length;
   }
 
   getModulationTarget(effectId: string, parameter: string) {
@@ -148,6 +161,45 @@ export class BusGraph {
     return { success: true };
   }
 
+  reset(): { success: boolean; reason?: string } {
+    if (!this.ready) return { success: false, reason: 'BusGraph not initialized' };
+
+    for (const busName in this.inputBuses) {
+      const bus = this.inputBuses[busName as AudioBusName];
+      if (bus && bus.mute !== undefined) {
+        bus.mute = false;
+      }
+    }
+
+    this.resetAllEffects(MODULATION_REGISTRY);
+    return { success: true };
+  }
+
+  dispose(): { success: boolean } {
+    for (const busName in this.inputBuses) {
+      disposeNode(this.inputBuses[busName as AudioBusName]);
+    }
+
+    disposeNode(this.preMasterNode);
+    disposeNode(this.filterNode);
+    disposeNode(this.distortionNode);
+    disposeNode(this.delayNode);
+    disposeNode(this.reverbNode);
+    disposeNode(this.masterGainNode);
+
+    this.inputBuses = {} as Record<AudioBusName, any>;
+    this.preMasterNode = undefined;
+    this.filterNode = undefined;
+    this.distortionNode = undefined;
+    this.delayNode = undefined;
+    this.reverbNode = undefined;
+    this.masterGainNode = undefined;
+    this.toneRuntime = undefined;
+    this.ready = false;
+
+    return { success: true };
+  }
+
   emergencyStopAudioGraph(): { success: boolean } {
     if (!this.ready) return { success: false };
 
@@ -159,7 +211,7 @@ export class BusGraph {
         }
       }
       
-      const now = Tone.now();
+      const now = this.now();
 
       // Reset master to 0
       this.safeAutomation(this.masterGainNode.gain, 0, 0);
@@ -174,7 +226,7 @@ export class BusGraph {
       if (this.distortionNode.distortion.cancelScheduledValues) this.distortionNode.distortion.cancelScheduledValues(now);
 
       return { success: true };
-    } catch (e) {
+    } catch {
       return { success: false };
     }
   }
@@ -183,7 +235,7 @@ export class BusGraph {
     if (!param) return;
     
     if (param.cancelScheduledValues) {
-      param.cancelScheduledValues(Tone.now());
+      param.cancelScheduledValues(this.now());
     }
     
     if (rampTime <= 0) {
@@ -199,9 +251,30 @@ export class BusGraph {
       } else {
         param.value = value;
       }
-    } catch (e) {
+    } catch {
       param.value = value;
     }
   }
+
+  private now(): number {
+    if (this.toneRuntime && typeof this.toneRuntime.now === 'function') {
+      return this.toneRuntime.now();
+    }
+
+    return Tone.now();
+  }
 }
 
+function resolvePublicBusName(name: PublicAudioBusName): AudioBusName {
+  if (name === 'drums' || name === 'music' || name === 'vocals') {
+    return PUBLIC_BUS_ALIASES[name];
+  }
+
+  return name;
+}
+
+function disposeNode(node: any): void {
+  if (node && typeof node.dispose === 'function') {
+    node.dispose();
+  }
+}

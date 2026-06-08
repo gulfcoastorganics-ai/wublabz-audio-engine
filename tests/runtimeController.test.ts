@@ -13,6 +13,11 @@ type RuntimeResponsePayload = {
 vi.mock('../src/lib/WubLabzEngine.js', () => {
   return {
     WubLabzEngine: class {
+      busGraph = {
+        getRegisteredBusCount: () => 0,
+        getRegisteredModulationTargetCount: () => 0,
+        emergencyStopAudioGraph: () => ({ success: true })
+      };
       transport = {
         getState: () => 'stopped',
         getScheduledEvents: () => [],
@@ -125,6 +130,5 @@ describe('RuntimeController', () => {
     expect((response.payload as RuntimeResponsePayload).transportState).toBe('stopped');
   });
 });
-
 
 

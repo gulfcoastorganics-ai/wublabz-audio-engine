@@ -34,7 +34,7 @@ export class WubLabzEngine {
   }
 
   emergencyStop() {
-    this.stop();
+    this.transport.emergencyStop();
     this.busGraph.emergencyStopAudioGraph();
   }
 
@@ -112,6 +112,5 @@ export class WubLabzEngine {
     };
   }
 }
-
 
 

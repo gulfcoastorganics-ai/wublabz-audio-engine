@@ -25,6 +25,7 @@ export * from './lib/playback/AudioClipManager.js';
 export * from './lib/playback/AudioGraph.js';
 export * from './lib/playback/EventScheduler.js';
 export * from './lib/playback/EventPlaybackStrategy.js';
+export * from './lib/playback/timelineEventRouter.js';
 export * from './lib/playback/PlaybackTransport.js';
 export * from './lib/playback/PlaybackValidator.js';
 export * from './lib/playback/ToneAdapter.js';

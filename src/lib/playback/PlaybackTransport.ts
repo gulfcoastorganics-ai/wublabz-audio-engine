@@ -147,6 +147,15 @@ export class PlaybackTransport {
     return this.session('Playback stopped.');
   }
 
+  emergencyStop(): PlaybackSession {
+    this.scheduler.emergencyStop();
+    this.scheduledEvents = [];
+    this.triggeredEvents = [];
+    this.state = 'stopped';
+    this.emit(this.stopListeners, this.state);
+    return this.session('Emergency stop cleared scheduled playback.');
+  }
+
   seek(position: number): PlaybackSession {
     this.state = 'seeking';
     this.adapter.seek(position);

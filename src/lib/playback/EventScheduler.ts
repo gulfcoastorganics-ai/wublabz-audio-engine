@@ -9,6 +9,8 @@ export interface ScheduledTimelineEvent extends TimelineEventV2 {
   scheduledEndTime: number;
 }
 
+export type SchedulerTransportState = 'stopped' | 'loading' | 'playing' | 'paused' | 'seeking';
+
 export interface EventSchedulerOptions {
   adapter?: ToneJsAdapter;
   validator?: PlaybackValidator;
@@ -18,6 +20,7 @@ export class EventScheduler {
   private readonly adapter: ToneJsAdapter | undefined;
   private readonly validator: PlaybackValidator;
   private scheduledEvents: ScheduledTimelineEvent[] = [];
+  private transportState: SchedulerTransportState = 'stopped';
 
   constructor(options: EventSchedulerOptions = {}) {
     this.adapter = options.adapter;
@@ -69,11 +72,68 @@ export class EventScheduler {
 
   seekRecovery(positionSeconds: number): ScheduledTimelineEvent[] {
     const recovered = this.scheduledEvents.filter((event) => event.endTime > positionSeconds);
+    this.scheduledEvents = recovered;
     if (this.adapter) {
       this.adapter.clearSchedule();
       this.adapter.scheduleEvents(recovered);
     }
     return recovered;
+  }
+
+  async play(startAtSeconds?: number): Promise<SchedulerTransportState> {
+    if (typeof startAtSeconds === 'number' && Number.isFinite(startAtSeconds) && startAtSeconds > 0) {
+      this.seekRecovery(startAtSeconds);
+    }
+
+    this.transportState = 'loading';
+    await this.adapter?.play();
+    this.transportState = 'playing';
+    return this.transportState;
+  }
+
+  pause(): SchedulerTransportState {
+    this.adapter?.pause();
+    this.transportState = 'paused';
+    return this.transportState;
+  }
+
+  stop(): SchedulerTransportState {
+    this.adapter?.clearSchedule();
+    this.adapter?.stop();
+    this.scheduledEvents = [];
+    this.transportState = 'stopped';
+    return this.transportState;
+  }
+
+  seek(positionSeconds: number): ScheduledTimelineEvent[] {
+    const safePosition = Number.isFinite(positionSeconds) ? Math.max(0, positionSeconds) : 0;
+    this.transportState = 'seeking';
+    this.adapter?.seek(safePosition);
+    const recovered = this.seekRecovery(safePosition);
+    this.transportState = 'paused';
+    return recovered;
+  }
+
+  dispose(): void | Promise<void> {
+    this.clear();
+    this.transportState = 'stopped';
+    return this.adapter?.dispose();
+  }
+
+  emergencyStop(): SchedulerTransportState {
+    this.adapter?.clearSchedule();
+    this.adapter?.stop();
+    this.scheduledEvents = [];
+    this.transportState = 'stopped';
+    return this.transportState;
+  }
+
+  getScheduledEventCount(): number {
+    return this.scheduledEvents.length;
+  }
+
+  getTransportState(): SchedulerTransportState {
+    return this.transportState;
   }
 
   getScheduledEvents(): ScheduledTimelineEvent[] {

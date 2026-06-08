@@ -3,17 +3,7 @@ import { AudioClipManager, type LoadedClip } from './AudioClipManager.js';
 import type { ScheduledTimelineEvent } from './EventScheduler.js';
 import type { TimelineEventV2 } from '../producer/types.js';
 import type { BusGraph } from '../audio/BusGraph.js';
-
-function resolveBus(eventType: TimelineEventV2['type']): 'drum' | 'bass' | 'melody' | 'vocal' | 'fx' | 'preview' {
-  if (eventType === 'drum') return 'drum';
-  if (eventType === 'bass') return 'bass';
-  if (eventType === 'lead' || eventType === 'synth' || eventType === 'stem_clip') return 'melody';
-  if (eventType === 'vocal') return 'vocal';
-  if (eventType === 'fx' || eventType === 'transition' || eventType === 'impact' || eventType === 'riser' || eventType === 'fill') {
-    return 'fx';
-  }
-  return 'preview';
-}
+import { resolveTimelineEventBus, routeTimelineEvent, type TimelineRouteAction } from './timelineEventRouter.js';
 
 export interface ToneCommand {
   id: string;
@@ -51,7 +41,6 @@ export interface ToneAudioBufferLike {
 }
 
 export interface TonePlayerLike {
-  toDestination?: () => TonePlayerLike;
   connect?: (destination: unknown) => TonePlayerLike;
   start: (time?: number, offset?: number, duration?: number) => TonePlayerLike;
   stop: (time?: number) => TonePlayerLike;
@@ -101,19 +90,7 @@ function isRuntimeLike(value: ToneLikeRuntime | ToneJsAdapterOptions | undefined
 }
 
 function classifyCommandType(event: TimelineEventV2): ToneCommand['commandType'] {
-  if (event.type === 'marker') {
-    return 'marker';
-  }
-
-  if (event.type === 'silence') {
-    return 'noop';
-  }
-
-  if (event.type === 'transition' || event.type === 'riser' || event.type === 'impact' || event.type === 'fill') {
-    return 'fade';
-  }
-
-  return 'trigger';
+  return routeTimelineEvent(event).action.commandType;
 }
 
 export class ToneJsAdapter {
@@ -301,20 +278,14 @@ export class ToneJsAdapter {
     }
 
     void this.initialize();
+    const route = routeTimelineEvent(event);
     const command: ScheduledToneEvent = {
       id: `${event.id}:tone`,
       eventId: event.id,
-      commandType: classifyCommandType(event),
+      commandType: route.action.commandType,
       startTime: event.startTime,
       endTime: event.endTime,
-      payload: {
-        type: event.type,
-        sectionId: event.sectionId,
-        stemId: event.stemId,
-        clipId: event.payload?.clipId ?? event.stemId ?? event.sourceId,
-        sourcePath: event.payload?.sourcePath ?? event.payload?.clipPath ?? this.defaultSourcePath,
-        energyLevel: event.energyLevel
-      },
+      payload: createToneCommandPayload(event, route.action, this.defaultSourcePath),
       scheduleId: -1
     };
 
@@ -506,14 +477,15 @@ export class ToneJsAdapter {
 
       const player = new this.runtime!.Player(clip.buffer);
       if (this.busGraph) {
-        const busName = resolveBus(event.type);
+        const busName = resolveTimelineEventBus(event);
         if (player.connect) {
           player.connect(this.busGraph.getBus(busName));
         }
-      } else if (player.toDestination) {
-        player.toDestination();
-      } else if (player.connect) {
-        player.connect(undefined);
+      } else {
+        this.droppedEvents += 1;
+        this.eventHandler?.(event, command);
+        player.dispose();
+        return;
       }
 
       if (command.commandType === 'fade' && player.volume) {
@@ -648,22 +620,44 @@ export class ToneJsAdapter {
 
 export class ToneAdapter extends ToneJsAdapter {
   adapt(events: TimelineEventV2[]): ToneCommand[] {
-    return events.map((event) => ({
-      id: `${event.id}:tone`,
-      eventId: event.id,
-      commandType: classifyCommandType(event),
-      startTime: event.startTime,
-      endTime: event.endTime,
-      payload: {
-        type: event.type,
-        sectionId: event.sectionId,
-        stemId: event.stemId,
-        clipId: event.payload?.clipId ?? event.stemId ?? event.sourceId,
-        sourcePath: event.payload?.sourcePath ?? event.payload?.clipPath,
-        energyLevel: event.energyLevel
-      }
-    }));
+    return events.map((event) => {
+      const route = routeTimelineEvent(event);
+      return {
+        id: `${event.id}:tone`,
+        eventId: event.id,
+        commandType: route.action.commandType,
+        startTime: event.startTime,
+        endTime: event.endTime,
+        payload: createToneCommandPayload(event, route.action)
+      };
+    });
   }
+}
+
+function createToneCommandPayload(
+  event: TimelineEventV2,
+  action: TimelineRouteAction,
+  defaultSourcePath?: string
+): Record<string, unknown> {
+  return {
+    ...action.payload,
+    actionType: action.actionType,
+    type: event.type,
+    sectionId: event.sectionId,
+    stemId: event.stemId,
+    clipId: resolveCommandClipId(event, action),
+    sourcePath: action.payload.sourcePath ?? event.payload.sourcePath ?? event.payload.clipPath ?? defaultSourcePath,
+    energyLevel: event.energyLevel
+  };
+}
+
+function resolveCommandClipId(event: TimelineEventV2, action: TimelineRouteAction): string {
+  if (action.actionType === 'triggerClip' || action.actionType === 'sliceTrigger') {
+    return action.clipId;
+  }
+
+  const clipId = action.payload.clipId;
+  return typeof clipId === 'string' && clipId.trim() ? clipId : event.stemId ?? event.sourceId;
 }
 
 function resolveClipOffsetSeconds(event: ScheduledTimelineEvent, clip: LoadedClip<ToneAudioBufferLike>): number {
