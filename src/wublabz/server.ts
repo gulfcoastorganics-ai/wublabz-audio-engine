@@ -2,8 +2,14 @@ import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
 import { randomUUID } from 'node:crypto';
 import { RuntimeController } from './runtimeController.js';
+import { parseAndValidateInboundEvent } from './protocol.js';
 
 const PORT = 3001;
+
+type ServerResponse = {
+  type: string;
+  payload?: unknown;
+};
 
 async function startServer() {
   const server = Fastify({ logger: true });
@@ -29,7 +35,7 @@ async function startServer() {
     const clientId = randomUUID();
     server.log.info(`Client connected: ${clientId}`);
 
-    const sendResponse = (response: any) => {
+    const sendResponse = (response: ServerResponse) => {
       connection.socket.send(JSON.stringify({
         clientId,
         timestamp: Date.now(),
@@ -44,19 +50,20 @@ async function startServer() {
       payload: runtimeController.getRuntimeDiagnostics()
     });
 
-    connection.socket.on('message', (message: any) => {
+    connection.socket.on('message', (message: unknown) => {
+      const validation = parseAndValidateInboundEvent(toMessageText(message));
+
+      if (!validation.success) {
+        sendResponse({
+          type: 'EVENT_REJECTED',
+          payload: validation.rejection
+        });
+        return;
+      }
+
+      const event = validation.event;
+
       try {
-        const event = JSON.parse(message.toString());
-
-        // Protocol validation
-        if (!event.type || !event.source) {
-          sendResponse({
-            type: 'EVENT_REJECTED',
-            payload: { reason: 'Missing event type or source', originalEvent: event }
-          });
-          return;
-        }
-
         switch (event.type) {
           case 'HEARTBEAT':
             sendResponse({
@@ -89,16 +96,9 @@ async function startServer() {
           case 'PERFORMANCE_MACRO':
             sendResponse(runtimeController.handlePerformanceMacro(event.payload));
             break;
-
-          default:
-            server.log.info(`Unhandled event type: ${event.type}`);
-            sendResponse({
-              type: 'EVENT_REJECTED',
-              payload: { reason: 'Unknown event type', originalEvent: event }
-            });
         }
       } catch (err) {
-        server.log.error(err, 'Failed to parse WebSocket message');
+        server.log.error(err, 'Failed to handle WebSocket event');
       }
     });
 
@@ -117,3 +117,23 @@ async function startServer() {
 }
 
 startServer();
+
+function toMessageText(message: unknown): string {
+  if (typeof message === 'string') {
+    return message;
+  }
+
+  if (Buffer.isBuffer(message)) {
+    return message.toString('utf8');
+  }
+
+  if (message instanceof ArrayBuffer) {
+    return Buffer.from(message).toString('utf8');
+  }
+
+  if (Array.isArray(message) && message.every(Buffer.isBuffer)) {
+    return Buffer.concat(message).toString('utf8');
+  }
+
+  return String(message);
+}

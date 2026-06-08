@@ -33,6 +33,31 @@ export interface MacroOptions {
   transportSnapshot?: TransportSnapshot;
 }
 
+export type MacroActionResult =
+  | {
+      success: true;
+      target: string;
+      value: number;
+      rampTime: number;
+      clamped: boolean;
+      sanitized: {
+        effectId: string;
+        parameter: string;
+        value: number;
+        rampTime: number;
+      };
+    }
+  | {
+      success: false;
+      target: string;
+      reason: string;
+    };
+
+export type PerformanceMacroResult =
+  | { success: false; reason: string }
+  | { success: true; delayed: true; delaySeconds: number }
+  | { success: true; delayed: false; results: MacroActionResult[] };
+
 const pendingMacros: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
 export function cancelPendingMacro(macroId: string) {
@@ -54,7 +79,7 @@ export function getPendingMacroCount() {
   return pendingMacros.size;
 }
 
-export function runPerformanceMacro(macroId: string, options: MacroOptions, adapter: ModulationAdapter) {
+export function runPerformanceMacro(macroId: string, options: MacroOptions, adapter: ModulationAdapter): PerformanceMacroResult {
   if (!isKnownMacro(macroId)) {
     return { success: false, reason: 'Unknown macro' };
   }
@@ -85,8 +110,13 @@ export function runPerformanceMacro(macroId: string, options: MacroOptions, adap
   }
 }
 
-function executeMacroLogic(macroId: string, intensity: number, options: MacroOptions, adapter: ModulationAdapter) {
-  const results: any[] = [];
+function executeMacroLogic(
+  macroId: string,
+  intensity: number,
+  options: MacroOptions,
+  adapter: ModulationAdapter
+): Extract<PerformanceMacroResult, { success: true; delayed: false }> {
+  const results: MacroActionResult[] = [];
   const snapshot = options.transportSnapshot;
   
   // Default to 120 bpm values if no snapshot is provided
@@ -94,7 +124,26 @@ function executeMacroLogic(macroId: string, intensity: number, options: MacroOpt
   const secPerBar = snapshot?.secondsPerBar ?? 2.0;
 
   const apply = (effectId: string, parameter: string, value: number, rampTime: number) => {
-    results.push(adapter.applyModulation({ effectId, parameter, value, rampTime }));
+    const target = `${effectId}.${parameter}`;
+    const result = adapter.applyModulation({ effectId, parameter, value, rampTime });
+
+    if (result.success) {
+      results.push({
+        success: true,
+        target,
+        value: result.sanitized.value,
+        rampTime: result.sanitized.rampTime,
+        clamped: result.clamped,
+        sanitized: result.sanitized
+      });
+      return;
+    }
+
+    results.push({
+      success: false,
+      target,
+      reason: result.reason
+    });
   };
 
   switch (macroId) {

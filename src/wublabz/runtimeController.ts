@@ -1,8 +1,14 @@
 import { WubLabzEngine } from '../lib/WubLabzEngine.js';
 import { EngineDiagnosticsStore } from '../lib/diagnostics/EngineDiagnosticsStore.js';
 import { ModulationAdapter } from '../lib/audio/modulationAdapter.js';
-import { runPerformanceMacro, cancelAllPendingMacros, getPendingMacroCount } from '../lib/audio/performanceMacros.js';
+import { runPerformanceMacro, cancelAllPendingMacros } from '../lib/audio/performanceMacros.js';
 import { SceneScheduler } from '../lib/playback/sceneScheduler.js';
+import type {
+  ModulationPayload,
+  PerformanceMacroPayload,
+  SceneTriggerPayload,
+  TransportControlPayload
+} from './protocol.js';
 
 export class RuntimeController {
   private engine: WubLabzEngine;
@@ -43,12 +49,13 @@ export class RuntimeController {
     return this.diagnostics.getDiagnostics();
   }
 
-  handleTransportControl(payload: any) {
+  handleTransportControl(payload: TransportControlPayload) {
     if (!this.diagnostics.getDiagnostics().engineReady) {
       return { type: 'EVENT_REJECTED', payload: { originalType: 'TRANSPORT_CONTROL', reason: "Engine not ready", timestamp: Date.now() } };
     }
     const events = this.engine.transport.getScheduledEvents();
-    if (!events || events.length === 0) {
+    const requiresTimeline = payload.action === 'PLAY' || payload.action === 'SEEK';
+    if (requiresTimeline && (!events || events.length === 0)) {
       this.diagnostics.update({ lastSchedulerError: "No timeline loaded" });
       return { type: 'EVENT_REJECTED', payload: { originalType: 'TRANSPORT_CONTROL', reason: "No timeline loaded", suggestedAction: "Upload/analyze/generate a remix first", timestamp: Date.now() } };
     }
@@ -76,13 +83,14 @@ export class RuntimeController {
       }
       this.diagnostics.update({ transportState: this.engine.transport.getState() });
       return { type: 'ENGINE_STATUS', payload: this.getRuntimeDiagnostics() };
-    } catch (err: any) {
-      this.diagnostics.update({ lastSchedulerError: err.message });
-      return { type: 'EVENT_REJECTED', payload: { originalType: 'TRANSPORT_CONTROL', reason: err.message, timestamp: Date.now() } };
+    } catch (err: unknown) {
+      const reason = err instanceof Error ? err.message : 'Transport command failed';
+      this.diagnostics.update({ lastSchedulerError: reason });
+      return { type: 'EVENT_REJECTED', payload: { originalType: 'TRANSPORT_CONTROL', reason, timestamp: Date.now() } };
     }
   }
 
-  handleSceneTrigger(payload: any) {
+  handleSceneTrigger(payload: SceneTriggerPayload) {
     if (!this.diagnostics.getDiagnostics().engineReady) {
       return { type: 'EVENT_REJECTED', payload: { originalType: 'SCENE_TRIGGER', reason: "Engine not ready", timestamp: Date.now() } };
     }
@@ -96,7 +104,7 @@ export class RuntimeController {
     return { type: 'ENGINE_STATUS', payload: this.getRuntimeDiagnostics() };
   }
 
-  handleModulation(payload: any) {
+  handleModulation(payload: ModulationPayload) {
     if (!this.diagnostics.getDiagnostics().engineReady) {
       return { type: 'EVENT_REJECTED', payload: { originalType: 'MODULATION', reason: "Engine not ready", timestamp: Date.now() } };
     }
@@ -116,7 +124,7 @@ export class RuntimeController {
     return { type: 'ENGINE_STATUS', payload: { ...this.getRuntimeDiagnostics(), sanitizedModulation: result.sanitized } };
   }
 
-  handlePerformanceMacro(payload: any) {
+  handlePerformanceMacro(payload: PerformanceMacroPayload) {
     if (!this.diagnostics.getDiagnostics().engineReady) {
       return { type: 'EVENT_REJECTED', payload: { originalType: 'PERFORMANCE_MACRO', reason: "Engine not ready", timestamp: Date.now() } };
     }
@@ -132,7 +140,7 @@ export class RuntimeController {
     }, this.modulationAdapter);
     
     if (!result.success) {
-      const reason = (result as any).reason || 'Unknown macro failure';
+      const reason = result.reason || 'Unknown macro failure';
       this.diagnostics.update({ lastMacroError: reason });
       return { type: 'EVENT_REJECTED', payload: { originalType: 'PERFORMANCE_MACRO', reason: reason, timestamp: Date.now() } };
     }
@@ -167,5 +175,4 @@ export class RuntimeController {
     cancelAllPendingMacros();
   }
 }
-
 

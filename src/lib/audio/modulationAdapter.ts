@@ -8,13 +8,29 @@ export interface ModulationInput {
   rampTime?: number;
 }
 
+export type ModulationApplyResult =
+  | {
+      success: true;
+      clamped: boolean;
+      sanitized: {
+        effectId: string;
+        parameter: string;
+        value: number;
+        rampTime: number;
+      };
+    }
+  | {
+      success: false;
+      reason: string;
+    };
+
 export class ModulationAdapter {
   private activeModulations: Map<string, number> = new Map();
   private lastError: string | null = null;
 
   constructor(private engine: WubLabzEngine) {}
 
-  applyModulation(input: ModulationInput) {
+  applyModulation(input: ModulationInput): ModulationApplyResult {
     const { effectId, parameter, value, rampTime } = input;
     const validation = sanitizeModulationInput(effectId, parameter, value, rampTime);
     
@@ -23,16 +39,22 @@ export class ModulationAdapter {
       return { success: false, reason: this.lastError };
     }
 
-    const { sanitized, clamped } = validation;
-    const targetKey = `${sanitized!.effectId}.${sanitized!.parameter}`;
-
-    if (sanitized!.effectId === 'master' && sanitized!.parameter === 'volume') {
-      this.engine.setMasterVolume(sanitized!.value, sanitized!.rampTime);
-    } else {
-      this.engine.applyEffectParameter(sanitized!.effectId, sanitized!.parameter, sanitized!.value, sanitized!.rampTime);
+    const sanitized = validation.sanitized;
+    if (!sanitized) {
+      this.lastError = 'Invalid modulation target';
+      return { success: false, reason: this.lastError };
     }
 
-    this.activeModulations.set(targetKey, sanitized!.value);
+    const clamped = validation.clamped ?? false;
+    const targetKey = `${sanitized.effectId}.${sanitized.parameter}`;
+
+    if (sanitized.effectId === 'master' && sanitized.parameter === 'volume') {
+      this.engine.setMasterVolume(sanitized.value, sanitized.rampTime);
+    } else {
+      this.engine.applyEffectParameter(sanitized.effectId, sanitized.parameter, sanitized.value, sanitized.rampTime);
+    }
+
+    this.activeModulations.set(targetKey, sanitized.value);
     this.lastError = null;
 
     return { success: true, clamped, sanitized };
