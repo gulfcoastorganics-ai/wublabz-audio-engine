@@ -1,0 +1,75 @@
+node_modules/
+dist/
+.vite/
+.cache/
+coverage/
+.env
+.env.local
+.env.example
+*.log
+
+# Home-directory and agent state
+.Xauthority
+.bash_history
+.bash_logout
+.bashrc
+.gitconfig
+.lesshst
+.npmrc
+.profile
+.sommelierrc
+.sudo_as_admin_successful
+.wublabz/
+:memory:
+.codex/
+.gemini/
+.config/
+.cache/
+.npm/
+.local/
+.agents/
+.antigravity-ide/
+.gitreal/
+.ollama/
+.pki/
+
+# Generated package-manager state
+.npm-global/
+
+# Documents and marketing material outside the source tree
+/*.png
+*.pdf
+*.PDF
+*marketing*/
+wublabz marketing/
+red beach/
+*.mhtml
+
+# Editor and OS caches
+.vscode/
+.idea/
+.github/
+.DS_Store
+*.swp
+*.swo
+
+# Local audit/scratch folders
+archives/
+myaudit/
+gitreal-backups/
+antigravity-ide/
+projects/
+import
+*.py
+pyproject.toml
+harvested_content.txt
+survey_contents.txt
+ARRANGEMENT_AUDIT.md
+MOTIF_AUDIO_INTEGRATION_REPORT.md
+MUSICAL_OUTPUT_AUDIT.md
+MUSICAL_OUTPUT_AUDIT_V2.md
+MUSICAL_OUTPUT_AUDIT_V3.md
+ReleaseReadiness.md
+RepositoryAudit.md
+audit-report.md
+verify_mvp.ts
