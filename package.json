@@ -2,7 +2,12 @@
   "name": "wublabz",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20.20.2",
+    "npm": ">=10.5.2"
+  },
   "scripts": {
+    "preinstall": "if [ \"$npm_config_user_agent\" != \"\" ]; then if ! echo \"$npm_config_user_agent\" | grep -q \"npm/\"; then echo \"\nERROR: This project is standardized on npm. Use 'npm install'.\n\" && exit 1; fi; fi",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --config vitest.config.ts",
     "build": "rm -rf dist && tsc -p tsconfig.build.json",

@@ -105,6 +105,12 @@ export class PlaybackTransport {
     };
   }
 
+  loadTimeline(events: TimelineEventV2[]): void {
+    this.scheduledEvents = this.scheduler.scheduleTimeline(events);
+    this.triggeredEvents = [];
+    void this.adapter.preloadEvents(this.scheduledEvents);
+  }
+
   async play(events: ScheduledTimelineEvent[] = this.scheduledEvents): Promise<PlaybackSession> {
     try {
       if (events.length) {
