@@ -2,18 +2,42 @@ import type { SceneQuantize } from '../lib/playback/transportSnapshot.js';
 
 export const WUBLABZ_EVENT_TYPES = [
   'HEARTBEAT',
-  'TRANSPORT_CONTROL',
+  'TRANSPORT_PLAY',
+  'TRANSPORT_PAUSE',
+  'TRANSPORT_STOP',
+  'TRANSPORT_SEEK',
+  'STEM_MUTE',
+  'STEM_SOLO',
+  'STEM_GAIN',
+  'EFFECT_TOGGLE',
+  'MACRO_TRIGGER',
+  'MACRO_SET_VALUE',
   'SCENE_TRIGGER',
-  'MODULATION',
-  'PERFORMANCE_MACRO',
+  'EMERGENCY_STOP',
+  'ENGINE_STATUS',
+  'EVENT_REJECTED'
+] as const;
+
+export const WUBLABZ_INTENTS = [
+  'HEARTBEAT',
+  'TRANSPORT_PLAY',
+  'TRANSPORT_PAUSE',
+  'TRANSPORT_STOP',
+  'TRANSPORT_SEEK',
+  'STEM_MUTE',
+  'STEM_SOLO',
+  'STEM_GAIN',
+  'EFFECT_TOGGLE',
+  'MACRO_TRIGGER',
+  'MACRO_SET_VALUE',
+  'SCENE_TRIGGER',
   'EMERGENCY_STOP'
 ] as const;
 
-export const TRANSPORT_ACTIONS = ['PLAY', 'PAUSE', 'STOP', 'SEEK', 'RESET'] as const;
 export const SCENE_QUANTIZE_VALUES = ['immediate', 'nextBeat', 'nextBar', 'nextPhrase'] as const;
 
 export type WubLabzEventType = typeof WUBLABZ_EVENT_TYPES[number];
-export type TransportAction = typeof TRANSPORT_ACTIONS[number];
+export type WubLabzIntent = typeof WUBLABZ_INTENTS[number];
 
 export interface EventRejectedPayload {
   originalType: string;
@@ -24,11 +48,31 @@ export interface EventRejectedPayload {
 
 export interface HeartbeatPayload extends Record<string, unknown> {
   clientSent?: number;
+  serverReceived?: number;
 }
 
-export interface TransportControlPayload {
-  action: TransportAction;
-  positionSeconds?: number;
+export interface TransportSeekPayload {
+  positionSeconds: number;
+}
+
+export interface StemControlPayload {
+  stemId: string;
+  value?: number; // Used for GAIN (0-1)
+}
+
+export interface EffectTogglePayload {
+  effectId: string;
+  active?: boolean; // If omitted, toggle
+}
+
+export interface MacroTriggerPayload {
+  macroId: string;
+  intensity?: number;
+}
+
+export interface MacroSetValuePayload {
+  macroId: string;
+  value: number;
 }
 
 export interface SceneTriggerPayload {
@@ -36,30 +80,24 @@ export interface SceneTriggerPayload {
   quantize?: SceneQuantize;
 }
 
-export interface ModulationPayload {
-  effectId: string;
-  parameter: string;
-  value: number;
-  rampTime?: number;
-}
-
-export interface PerformanceMacroPayload {
-  macroId: string;
-  intensity?: number;
-  quantize?: SceneQuantize;
-  durationBeats?: number;
-  durationBars?: number;
-}
-
 export type EmergencyStopPayload = Record<string, unknown>;
 
 export type ValidatedWubLabzEvent =
-  | { type: 'HEARTBEAT'; source: string; timestamp?: number; payload: HeartbeatPayload }
-  | { type: 'TRANSPORT_CONTROL'; source: string; timestamp?: number; payload: TransportControlPayload }
-  | { type: 'SCENE_TRIGGER'; source: string; timestamp?: number; payload: SceneTriggerPayload }
-  | { type: 'MODULATION'; source: string; timestamp?: number; payload: ModulationPayload }
-  | { type: 'PERFORMANCE_MACRO'; source: string; timestamp?: number; payload: PerformanceMacroPayload }
-  | { type: 'EMERGENCY_STOP'; source: string; timestamp?: number; payload: EmergencyStopPayload };
+  | { type: 'HEARTBEAT'; source: string; timestamp?: number; clientId?: string; payload: HeartbeatPayload }
+  | { type: 'TRANSPORT_PLAY'; source: string; timestamp?: number; clientId?: string; payload: Record<string, never> }
+  | { type: 'TRANSPORT_PAUSE'; source: string; timestamp?: number; clientId?: string; payload: Record<string, never> }
+  | { type: 'TRANSPORT_STOP'; source: string; timestamp?: number; clientId?: string; payload: Record<string, never> }
+  | { type: 'TRANSPORT_SEEK'; source: string; timestamp?: number; clientId?: string; payload: TransportSeekPayload }
+  | { type: 'STEM_MUTE'; source: string; timestamp?: number; clientId?: string; payload: StemControlPayload }
+  | { type: 'STEM_SOLO'; source: string; timestamp?: number; clientId?: string; payload: StemControlPayload }
+  | { type: 'STEM_GAIN'; source: string; timestamp?: number; clientId?: string; payload: Required<StemControlPayload> }
+  | { type: 'EFFECT_TOGGLE'; source: string; timestamp?: number; clientId?: string; payload: EffectTogglePayload }
+  | { type: 'MACRO_TRIGGER'; source: string; timestamp?: number; clientId?: string; payload: MacroTriggerPayload }
+  | { type: 'MACRO_SET_VALUE'; source: string; timestamp?: number; clientId?: string; payload: MacroSetValuePayload }
+  | { type: 'SCENE_TRIGGER'; source: string; timestamp?: number; clientId?: string; payload: SceneTriggerPayload }
+  | { type: 'EMERGENCY_STOP'; source: string; timestamp?: number; clientId?: string; payload: EmergencyStopPayload }
+  | { type: 'ENGINE_STATUS'; source: string; timestamp?: number; clientId?: string; payload: any }
+  | { type: 'EVENT_REJECTED'; source: string; timestamp?: number; clientId?: string; payload: EventRejectedPayload };
 
 export type ProtocolValidationResult =
   | { success: true; event: ValidatedWubLabzEvent }
@@ -128,46 +166,84 @@ export function validateInboundEvent(candidate: unknown): ProtocolValidationResu
 
   const base = {
     source: candidate.source,
-    ...(candidate.timestamp !== undefined ? { timestamp: candidate.timestamp } : {})
+    ...(candidate.timestamp !== undefined ? { timestamp: candidate.timestamp } : {}),
+    ...(typeof candidate.clientId === 'string' ? { clientId: candidate.clientId } : {})
   };
+
+  const payload = candidate.payload || {};
 
   switch (candidate.type) {
     case 'HEARTBEAT': {
-      const result = validateHeartbeatPayload(candidate.payload);
+      const result = validateHeartbeatPayload(payload);
       return result.success
-        ? { success: true, event: { ...base, type: candidate.type, payload: result.payload } }
+        ? { success: true, event: { ...base, type: candidate.type, payload: result.payload } as ValidatedWubLabzEvent }
         : rejectPayload(candidate.type, result);
     }
-    case 'TRANSPORT_CONTROL': {
-      const result = validateTransportControlPayload(candidate.payload);
-      return result.success
-        ? { success: true, event: { ...base, type: candidate.type, payload: result.payload } }
-        : rejectPayload(candidate.type, result);
+    case 'ENGINE_STATUS':
+        return { success: true, event: { ...base, type: candidate.type, payload } as ValidatedWubLabzEvent };
+    
+    case 'EVENT_REJECTED':
+        return { success: true, event: { ...base, type: candidate.type, payload: payload as EventRejectedPayload } as ValidatedWubLabzEvent };
+
+    case 'TRANSPORT_PLAY':
+    case 'TRANSPORT_PAUSE':
+    case 'TRANSPORT_STOP':
+      return { success: true, event: { ...base, type: candidate.type, payload: {} } as ValidatedWubLabzEvent };
+    
+    case 'TRANSPORT_SEEK': {
+        if (!isRecord(payload) || !isFiniteNumber(payload.positionSeconds)) {
+            return { success: false, rejection: createProtocolRejection(candidate.type, 'positionSeconds is required') };
+        }
+        return { success: true, event: { ...base, type: candidate.type, payload: { positionSeconds: payload.positionSeconds } } as ValidatedWubLabzEvent };
     }
+
+    case 'STEM_MUTE':
+    case 'STEM_SOLO': {
+        if (!isRecord(payload) || typeof payload.stemId !== 'string') {
+            return { success: false, rejection: createProtocolRejection(candidate.type, 'stemId is required') };
+        }
+        return { success: true, event: { ...base, type: candidate.type, payload: { stemId: payload.stemId } } as ValidatedWubLabzEvent };
+    }
+
+    case 'STEM_GAIN': {
+        if (!isRecord(payload) || typeof payload.stemId !== 'string' || !isFiniteNumber(payload.value)) {
+            return { success: false, rejection: createProtocolRejection(candidate.type, 'stemId and numeric value are required') };
+        }
+        return { success: true, event: { ...base, type: candidate.type, payload: { stemId: payload.stemId, value: payload.value } } as ValidatedWubLabzEvent };
+    }
+
+    case 'EFFECT_TOGGLE': {
+        if (!isRecord(payload) || typeof payload.effectId !== 'string') {
+            return { success: false, rejection: createProtocolRejection(candidate.type, 'effectId is required') };
+        }
+        return { success: true, event: { ...base, type: candidate.type, payload: { effectId: payload.effectId, active: payload.active } } as ValidatedWubLabzEvent };
+    }
+
+    case 'MACRO_TRIGGER': {
+        if (!isRecord(payload) || typeof payload.macroId !== 'string') {
+            return { success: false, rejection: createProtocolRejection(candidate.type, 'macroId is required') };
+        }
+        return { success: true, event: { ...base, type: candidate.type, payload: { macroId: payload.macroId, intensity: payload.intensity } } as ValidatedWubLabzEvent };
+    }
+
+    case 'MACRO_SET_VALUE': {
+        if (!isRecord(payload) || typeof payload.macroId !== 'string' || !isFiniteNumber(payload.value)) {
+            return { success: false, rejection: createProtocolRejection(candidate.type, 'macroId and numeric value are required') };
+        }
+        return { success: true, event: { ...base, type: candidate.type, payload: { macroId: payload.macroId, value: payload.value } } as ValidatedWubLabzEvent };
+    }
+
     case 'SCENE_TRIGGER': {
-      const result = validateSceneTriggerPayload(candidate.payload);
+      const result = validateSceneTriggerPayload(payload);
       return result.success
-        ? { success: true, event: { ...base, type: candidate.type, payload: result.payload } }
-        : rejectPayload(candidate.type, result);
-    }
-    case 'MODULATION': {
-      const result = validateModulationPayload(candidate.payload);
-      return result.success
-        ? { success: true, event: { ...base, type: candidate.type, payload: result.payload } }
-        : rejectPayload(candidate.type, result);
-    }
-    case 'PERFORMANCE_MACRO': {
-      const result = validatePerformanceMacroPayload(candidate.payload);
-      return result.success
-        ? { success: true, event: { ...base, type: candidate.type, payload: result.payload } }
+        ? { success: true, event: { ...base, type: candidate.type, payload: result.payload } as ValidatedWubLabzEvent }
         : rejectPayload(candidate.type, result);
     }
     case 'EMERGENCY_STOP': {
-      const result = validateEmergencyStopPayload(candidate.payload);
-      return result.success
-        ? { success: true, event: { ...base, type: candidate.type, payload: result.payload } }
-        : rejectPayload(candidate.type, result);
+      return { success: true, event: { ...base, type: candidate.type, payload: {} } as ValidatedWubLabzEvent };
     }
+    default:
+        return { success: false, rejection: createProtocolRejection(candidate.type, 'Unsupported event type') };
   }
 }
 
@@ -181,110 +257,25 @@ function validateHeartbeatPayload(payload: unknown): PayloadValidationResult<Hea
   return { success: true, payload: payload as HeartbeatPayload };
 }
 
-function validateTransportControlPayload(payload: unknown): PayloadValidationResult<TransportControlPayload> {
-  if (!isRecord(payload)) {
-    return { success: false, reason: 'TRANSPORT_CONTROL payload must be an object' };
-  }
-  if (!isTransportAction(payload.action)) {
-    return { success: false, reason: 'TRANSPORT_CONTROL payload.action is invalid' };
-  }
-  if (payload.positionSeconds !== undefined && !isFiniteNumber(payload.positionSeconds)) {
-    return { success: false, reason: 'TRANSPORT_CONTROL payload.positionSeconds must be a number' };
-  }
-  return {
-    success: true,
-    payload: {
-      action: payload.action,
-      ...(payload.positionSeconds !== undefined ? { positionSeconds: payload.positionSeconds } : {})
-    }
-  };
-}
-
 function validateSceneTriggerPayload(payload: unknown): PayloadValidationResult<SceneTriggerPayload> {
   if (!isRecord(payload)) {
     return { success: false, reason: 'SCENE_TRIGGER payload must be an object' };
   }
-  if (typeof payload.sceneId !== 'string') {
+  const sceneId = payload.sceneId;
+  if (typeof sceneId !== 'string') {
     return { success: false, reason: 'SCENE_TRIGGER payload.sceneId must be a string' };
   }
-  if (payload.quantize !== undefined && !isSceneQuantize(payload.quantize)) {
+  const quantize = payload.quantize;
+  if (quantize !== undefined && !isSceneQuantize(quantize)) {
     return { success: false, reason: 'SCENE_TRIGGER payload.quantize is invalid' };
   }
   return {
     success: true,
     payload: {
-      sceneId: payload.sceneId,
-      ...(payload.quantize !== undefined ? { quantize: payload.quantize } : {})
+      sceneId,
+      ...(quantize !== undefined ? { quantize } : {})
     }
   };
-}
-
-function validateModulationPayload(payload: unknown): PayloadValidationResult<ModulationPayload> {
-  if (!isRecord(payload)) {
-    return { success: false, reason: 'MODULATION payload must be an object' };
-  }
-  if (typeof payload.effectId !== 'string') {
-    return { success: false, reason: 'MODULATION payload.effectId must be a string' };
-  }
-  if (typeof payload.parameter !== 'string') {
-    return { success: false, reason: 'MODULATION payload.parameter must be a string' };
-  }
-  if (!isFiniteNumber(payload.value)) {
-    return { success: false, reason: 'MODULATION payload.value must be a number' };
-  }
-  if (payload.rampTime !== undefined && !isFiniteNumber(payload.rampTime)) {
-    return { success: false, reason: 'MODULATION payload.rampTime must be a number' };
-  }
-  return {
-    success: true,
-    payload: {
-      effectId: payload.effectId,
-      parameter: payload.parameter,
-      value: payload.value,
-      ...(payload.rampTime !== undefined ? { rampTime: payload.rampTime } : {})
-    }
-  };
-}
-
-function validatePerformanceMacroPayload(payload: unknown): PayloadValidationResult<PerformanceMacroPayload> {
-  if (!isRecord(payload)) {
-    return { success: false, reason: 'PERFORMANCE_MACRO payload must be an object' };
-  }
-  if (typeof payload.macroId !== 'string') {
-    return { success: false, reason: 'PERFORMANCE_MACRO payload.macroId must be a string' };
-  }
-  if (payload.intensity !== undefined && !isFiniteNumber(payload.intensity)) {
-    return { success: false, reason: 'PERFORMANCE_MACRO payload.intensity must be a number' };
-  }
-  if (payload.quantize !== undefined && !isSceneQuantize(payload.quantize)) {
-    return { success: false, reason: 'PERFORMANCE_MACRO payload.quantize is invalid' };
-  }
-  if (payload.durationBeats !== undefined && !isFiniteNumber(payload.durationBeats)) {
-    return { success: false, reason: 'PERFORMANCE_MACRO payload.durationBeats must be a number' };
-  }
-  if (payload.durationBars !== undefined && !isFiniteNumber(payload.durationBars)) {
-    return { success: false, reason: 'PERFORMANCE_MACRO payload.durationBars must be a number' };
-  }
-  return {
-    success: true,
-    payload: {
-      macroId: payload.macroId,
-      ...(payload.intensity !== undefined ? { intensity: payload.intensity } : {}),
-      ...(payload.quantize !== undefined ? { quantize: payload.quantize } : {}),
-      ...(payload.durationBeats !== undefined ? { durationBeats: payload.durationBeats } : {}),
-      ...(payload.durationBars !== undefined ? { durationBars: payload.durationBars } : {})
-    }
-  };
-}
-
-function validateEmergencyStopPayload(payload: unknown): PayloadValidationResult<EmergencyStopPayload> {
-  if (payload === undefined) {
-    return { success: true, payload: {} };
-  }
-  if (!isRecord(payload)) {
-    return { success: false, reason: 'EMERGENCY_STOP payload must be an object' };
-  }
-  return { success: true, payload };
 }
 
 function rejectPayload<T extends PayloadValidationResult<unknown> & { success: false }>(
@@ -310,13 +301,9 @@ function isFiniteNumber(value: unknown): value is number {
 }
 
 function isWubLabzEventType(value: string): value is WubLabzEventType {
-  return (WUBLABZ_EVENT_TYPES as readonly string[]).includes(value);
-}
-
-function isTransportAction(value: unknown): value is TransportAction {
-  return typeof value === 'string' && (TRANSPORT_ACTIONS as readonly string[]).includes(value);
+  return (WUBLABZ_EVENT_TYPES as readonly string[]).includes(value as any);
 }
 
 function isSceneQuantize(value: unknown): value is SceneQuantize {
-  return typeof value === 'string' && (SCENE_QUANTIZE_VALUES as readonly string[]).includes(value);
+  return typeof value === 'string' && (SCENE_QUANTIZE_VALUES as readonly string[]).includes(value as any);
 }

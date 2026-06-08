@@ -22,10 +22,12 @@ export class BusGraph {
   private masterGainNode: any;
 
   private inputBuses: Record<AudioBusName, any>;
+  private busMeters: Record<AudioBusName, any>;
   private toneRuntime: any;
 
   constructor() {
     this.inputBuses = {} as Record<AudioBusName, any>;
+    this.busMeters = {} as Record<AudioBusName, any>;
   }
 
   async initialize(toneRuntime: any) {
@@ -64,11 +66,29 @@ export class BusGraph {
       render: new toneRuntime.Channel()
     };
 
+    this.busMeters = {
+      master: new toneRuntime.Meter(),
+      drum: new toneRuntime.Meter(),
+      bass: new toneRuntime.Meter(),
+      melody: new toneRuntime.Meter(),
+      vocal: new toneRuntime.Meter(),
+      fx: new toneRuntime.Meter(),
+      preview: new toneRuntime.Meter(),
+      render: new toneRuntime.Meter()
+    };
+
     if (this.reverbNode.generate) {
       await this.reverbNode.generate(); 
     }
     
     for (const busName in this.inputBuses) {
+      const bus = this.inputBuses[busName as AudioBusName];
+      const meter = this.busMeters[busName as AudioBusName];
+      
+      if (bus && meter) {
+        bus.connect(meter);
+      }
+
       if (busName !== 'master') {
         this.inputBuses[busName as AudioBusName].connect(this.preMasterNode);
       }
@@ -90,6 +110,24 @@ export class BusGraph {
 
   getBus(name: PublicAudioBusName): any {
     return this.inputBuses[resolvePublicBusName(name)];
+  }
+
+  getBusLevels(): Record<string, number> {
+    const levels: Record<string, number> = {};
+    if (!this.ready) return levels;
+
+    for (const busName in this.busMeters) {
+      const meter = this.busMeters[busName as AudioBusName];
+      if (meter) {
+        try {
+          const val = meter.getValue();
+          levels[busName] = Array.isArray(val) ? val[0] : val;
+        } catch {
+          levels[busName] = -Infinity;
+        }
+      }
+    }
+    return levels;
   }
 
   getRegisteredBusCount(): number {
@@ -114,12 +152,45 @@ export class BusGraph {
     try {
       let targetParam: any;
 
-      if (effectId === 'filter' && parameter === 'cutoff') targetParam = this.filterNode.frequency;
-      else if (effectId === 'filter' && parameter === 'resonance') targetParam = this.filterNode.Q;
-      else if (effectId === 'reverb' && parameter === 'wet') targetParam = this.reverbNode.wet;
-      else if (effectId === 'delay' && parameter === 'feedback') targetParam = this.delayNode.feedback;
-      else if (effectId === 'delay' && parameter === 'wet') targetParam = this.delayNode.wet;
-      else if (effectId === 'distortion' && parameter === 'drive') targetParam = this.distortionNode.distortion;
+      if (effectId === 'filter') {
+        if (parameter === 'cutoff') targetParam = this.filterNode.frequency;
+        else if (parameter === 'resonance') targetParam = this.filterNode.Q;
+        else if (parameter === 'active') {
+          // Simplistic bypass: if active is 0, set frequency to max (open)
+          const openFreq = 20000;
+          this.safeAutomation(this.filterNode.frequency, value === 1 ? MODULATION_REGISTRY.filter.cutoff.defaultValue : openFreq, rampTime);
+          return { success: true };
+        }
+      } else if (effectId === 'reverb') {
+        if (parameter === 'wet') targetParam = this.reverbNode.wet;
+        else if (parameter === 'active') {
+          this.safeAutomation(this.reverbNode.wet, value === 1 ? MODULATION_REGISTRY.reverb.wet.defaultValue : 0, rampTime);
+          return { success: true };
+        }
+      } else if (effectId === 'delay') {
+        if (parameter === 'feedback') targetParam = this.delayNode.feedback;
+        else if (parameter === 'wet') targetParam = this.delayNode.wet;
+        else if (parameter === 'active') {
+          this.safeAutomation(this.delayNode.wet, value === 1 ? MODULATION_REGISTRY.delay.wet.defaultValue : 0, rampTime);
+          return { success: true };
+        }
+      } else if (effectId === 'distortion') {
+        if (parameter === 'drive') targetParam = this.distortionNode.distortion;
+        else if (parameter === 'active') {
+          this.safeAutomation(this.distortionNode.distortion, value === 1 ? MODULATION_REGISTRY.distortion.drive.defaultValue : 0, rampTime);
+          return { success: true };
+        }
+      } else if (this.inputBuses[effectId as AudioBusName]) {
+        const bus = this.inputBuses[effectId as AudioBusName];
+        if (parameter === 'volume') targetParam = bus.volume;
+        else if (parameter === 'mute') {
+          bus.mute = value === 1;
+          return { success: true };
+        } else if (parameter === 'solo') {
+          bus.solo = value === 1;
+          return { success: true };
+        }
+      }
 
       if (!targetParam) {
         return { success: false, reason: `No physical parameter mapped for ${effectId}.${parameter}` };
@@ -169,6 +240,9 @@ export class BusGraph {
       if (bus && bus.mute !== undefined) {
         bus.mute = false;
       }
+      if (bus && bus.solo !== undefined) {
+        bus.solo = false;
+      }
     }
 
     this.resetAllEffects(MODULATION_REGISTRY);
@@ -180,6 +254,10 @@ export class BusGraph {
       disposeNode(this.inputBuses[busName as AudioBusName]);
     }
 
+    for (const busName in this.busMeters) {
+      disposeNode(this.busMeters[busName as AudioBusName]);
+    }
+
     disposeNode(this.preMasterNode);
     disposeNode(this.filterNode);
     disposeNode(this.distortionNode);
@@ -188,6 +266,7 @@ export class BusGraph {
     disposeNode(this.masterGainNode);
 
     this.inputBuses = {} as Record<AudioBusName, any>;
+    this.busMeters = {} as Record<AudioBusName, any>;
     this.preMasterNode = undefined;
     this.filterNode = undefined;
     this.distortionNode = undefined;

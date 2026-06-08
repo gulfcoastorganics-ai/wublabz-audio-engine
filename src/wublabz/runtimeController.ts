@@ -4,10 +4,13 @@ import { ModulationAdapter } from '../lib/audio/modulationAdapter.js';
 import { runPerformanceMacro, cancelAllPendingMacros, getPendingMacroCount } from '../lib/audio/performanceMacros.js';
 import { SceneScheduler } from '../lib/playback/sceneScheduler.js';
 import type {
-  ModulationPayload,
-  PerformanceMacroPayload,
   SceneTriggerPayload,
-  TransportControlPayload
+  StemControlPayload,
+  EffectTogglePayload,
+  MacroTriggerPayload,
+  MacroSetValuePayload,
+  TransportSeekPayload,
+  ValidatedWubLabzEvent
 } from './protocol.js';
 
 export class RuntimeController {
@@ -47,106 +50,116 @@ export class RuntimeController {
       pendingMacroCount: getPendingMacroCount(),
       currentScene: this.sceneScheduler.getCurrentScene(),
       queuedScene: this.sceneScheduler.getQueuedScene(),
+      busLevels: this.engine.busGraph.getBusLevels()
     });
     return this.diagnostics.getDiagnostics();
   }
 
-  handleTransportControl(payload: TransportControlPayload) {
-    if (!this.diagnostics.getDiagnostics().engineReady) {
-      return { type: 'EVENT_REJECTED', payload: { originalType: 'TRANSPORT_CONTROL', reason: "Engine not ready", timestamp: Date.now() } };
+  handleIntent(event: ValidatedWubLabzEvent) {
+    if (!this.diagnostics.getDiagnostics().engineReady && event.type !== 'HEARTBEAT' && event.type !== 'EMERGENCY_STOP') {
+      return { type: 'EVENT_REJECTED', payload: { originalType: event.type, reason: "Engine not ready", timestamp: Date.now() } };
     }
-    const events = this.engine.transport.getScheduledEvents();
-    const requiresTimeline = payload.action === 'PLAY' || payload.action === 'SEEK';
-    if (requiresTimeline && (!events || events.length === 0)) {
+
+    const requiresTimeline = event.type === 'TRANSPORT_PLAY' || event.type === 'TRANSPORT_SEEK';
+    if (requiresTimeline && this.engine.transport.getScheduledEvents().length === 0) {
       this.diagnostics.update({ lastSchedulerError: "No timeline loaded" });
-      return { type: 'EVENT_REJECTED', payload: { originalType: 'TRANSPORT_CONTROL', reason: "No timeline loaded", suggestedAction: "Upload/analyze/generate a remix first", timestamp: Date.now() } };
+      return { type: 'EVENT_REJECTED', payload: { originalType: event.type, reason: "No timeline loaded", suggestedAction: "Upload/analyze/generate a remix first", timestamp: Date.now() } };
     }
 
     try {
-      switch (payload.action) {
-        case 'PLAY':
+      switch (event.type) {
+        case 'HEARTBEAT':
+          return { type: 'HEARTBEAT', payload: { ...event.payload, serverReceived: Date.now() } };
+
+        case 'TRANSPORT_PLAY':
           this.engine.play();
           break;
-        case 'PAUSE':
+        case 'TRANSPORT_PAUSE':
           this.engine.pause();
           break;
-        case 'STOP':
+        case 'TRANSPORT_STOP':
           this.engine.stop();
           break;
-        case 'SEEK':
-          this.engine.seek(payload.positionSeconds || 0);
+        case 'TRANSPORT_SEEK':
+          this.engine.seek((event.payload as TransportSeekPayload).positionSeconds);
           break;
-        case 'RESET':
-          this.engine.stop();
-          this.engine.seek(0);
+
+        case 'STEM_MUTE':
+          this.modulationAdapter.applyModulation({
+            effectId: (event.payload as StemControlPayload).stemId,
+            parameter: 'mute',
+            value: 1
+          });
           break;
-        default:
-          return { type: 'EVENT_REJECTED', payload: { originalType: 'TRANSPORT_CONTROL', reason: "Unknown transport action", timestamp: Date.now() } };
+        case 'STEM_SOLO':
+          this.modulationAdapter.applyModulation({
+            effectId: (event.payload as StemControlPayload).stemId,
+            parameter: 'solo',
+            value: 1
+          });
+          break;
+        case 'STEM_GAIN':
+          this.modulationAdapter.applyModulation({
+            effectId: (event.payload as StemControlPayload).stemId,
+            parameter: 'volume',
+            value: (event.payload as Required<StemControlPayload>).value
+          });
+          break;
+
+        case 'EFFECT_TOGGLE':
+          this.modulationAdapter.applyModulation({
+            effectId: (event.payload as EffectTogglePayload).effectId,
+            parameter: 'active',
+            value: (event.payload as EffectTogglePayload).active === false ? 0 : 1
+          });
+          break;
+
+        case 'MACRO_TRIGGER':
+          return this.handlePerformanceMacro(event.payload as MacroTriggerPayload);
+
+        case 'MACRO_SET_VALUE':
+          this.modulationAdapter.applyModulation({
+            effectId: 'macro',
+            parameter: (event.payload as MacroSetValuePayload).macroId,
+            value: (event.payload as MacroSetValuePayload).value
+          });
+          break;
+
+        case 'SCENE_TRIGGER':
+          return this.handleSceneTrigger(event.payload as SceneTriggerPayload);
+
+        case 'EMERGENCY_STOP':
+          return this.handleEmergencyStop();
       }
-      this.diagnostics.update({ transportState: this.engine.transport.getState() });
+
       return { type: 'ENGINE_STATUS', payload: this.getRuntimeDiagnostics() };
     } catch (err: unknown) {
-      const reason = err instanceof Error ? err.message : 'Transport command failed';
-      this.diagnostics.update({ lastSchedulerError: reason });
-      return { type: 'EVENT_REJECTED', payload: { originalType: 'TRANSPORT_CONTROL', reason, timestamp: Date.now() } };
+      const reason = err instanceof Error ? err.message : 'Intent execution failed';
+      return { type: 'EVENT_REJECTED', payload: { originalType: event.type, reason, timestamp: Date.now() } };
     }
   }
 
-  handleSceneTrigger(payload: SceneTriggerPayload) {
-    if (!this.diagnostics.getDiagnostics().engineReady) {
-      return { type: 'EVENT_REJECTED', payload: { originalType: 'SCENE_TRIGGER', reason: "Engine not ready", timestamp: Date.now() } };
-    }
-
+  private handleSceneTrigger(payload: SceneTriggerPayload) {
     const result = this.sceneScheduler.queueScene(payload.sceneId, payload.quantize);
     if (!result.success) {
       this.diagnostics.update({ lastSceneError: result.reason });
       return { type: 'EVENT_REJECTED', payload: { originalType: 'SCENE_TRIGGER', reason: result.reason, timestamp: Date.now() } };
     }
-
     return { type: 'ENGINE_STATUS', payload: this.getRuntimeDiagnostics() };
   }
 
-  handleModulation(payload: ModulationPayload) {
-    if (!this.diagnostics.getDiagnostics().engineReady) {
-      return { type: 'EVENT_REJECTED', payload: { originalType: 'MODULATION', reason: "Engine not ready", timestamp: Date.now() } };
-    }
-    
-    const result = this.modulationAdapter.applyModulation({
-      effectId: payload.effectId,
-      parameter: payload.parameter,
-      value: payload.value,
-      rampTime: payload.rampTime
-    });
-
-    if (!result.success) {
-      this.diagnostics.update({ lastModulationError: result.reason });
-      return { type: 'EVENT_REJECTED', payload: { originalType: 'MODULATION', reason: result.reason, timestamp: Date.now() } };
-    }
-
-    return { type: 'ENGINE_STATUS', payload: { ...this.getRuntimeDiagnostics(), sanitizedModulation: result.sanitized } };
-  }
-
-  handlePerformanceMacro(payload: PerformanceMacroPayload) {
-    if (!this.diagnostics.getDiagnostics().engineReady) {
-      return { type: 'EVENT_REJECTED', payload: { originalType: 'PERFORMANCE_MACRO', reason: "Engine not ready", timestamp: Date.now() } };
-    }
-
+  private handlePerformanceMacro(payload: MacroTriggerPayload) {
     const snapshot = this.engine.getTransportSnapshot();
-
     const result = runPerformanceMacro(payload.macroId, { 
       intensity: payload.intensity,
-      quantize: payload.quantize,
-      durationBeats: payload.durationBeats,
-      durationBars: payload.durationBars,
       transportSnapshot: snapshot
     }, this.modulationAdapter);
     
     if (!result.success) {
       const reason = result.reason || 'Unknown macro failure';
       this.diagnostics.update({ lastMacroError: reason });
-      return { type: 'EVENT_REJECTED', payload: { originalType: 'PERFORMANCE_MACRO', reason: reason, timestamp: Date.now() } };
+      return { type: 'EVENT_REJECTED', payload: { originalType: 'MACRO_TRIGGER', reason: reason, timestamp: Date.now() } };
     }
-
     return { type: 'ENGINE_STATUS', payload: this.getRuntimeDiagnostics() };
   }
 

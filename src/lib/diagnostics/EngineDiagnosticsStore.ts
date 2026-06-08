@@ -27,6 +27,7 @@ export interface EngineDiagnostics {
   currentDropLevel?: number;
   motifCount?: number;
   recallCount?: number;
+  busLevels?: Record<string, number>;
 }
 
 export class EngineDiagnosticsStore {

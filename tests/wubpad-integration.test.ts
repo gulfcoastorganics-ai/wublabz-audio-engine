@@ -1,0 +1,159 @@
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+
+// Improved Mock WebSocket
+class MockWebSocket {
+  static instances: MockWebSocket[] = [];
+  static OPEN = 1;
+  static CONNECTING = 0;
+  static CLOSED = 3;
+  static CLOSING = 2;
+
+  readyState = 0;
+  onopen: any = null;
+  onmessage: any = null;
+  onclose: any = null;
+  onerror: any = null;
+  url: string;
+
+  constructor(url: string) {
+    this.url = url;
+    MockWebSocket.instances.push(this);
+  }
+
+  send = vi.fn();
+  close = vi.fn(() => {
+    this.readyState = 3;
+    if (this.onclose) this.onclose({ wasClean: true, code: 1000 });
+  });
+
+  triggerOpen() {
+    this.readyState = 1;
+    if (this.onopen) this.onopen();
+  }
+
+  triggerClose(wasClean: boolean, code: number) {
+    this.readyState = 3;
+    if (this.onclose) this.onclose({ wasClean, code });
+  }
+}
+
+// Assign to globalThis before ANY import
+(globalThis as any).WebSocket = MockWebSocket;
+
+describe('WubWebSocketClient', () => {
+  let client: any;
+  let WubWebSocketClient: any;
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    MockWebSocket.instances = [];
+    const mod = await import('../src/wubpad-integration/WebSocketClient.js');
+    WubWebSocketClient = mod.WubWebSocketClient;
+    client = new WubWebSocketClient({ url: 'ws://localhost:3001', autoConnect: false });
+  });
+
+  afterEach(() => {
+    client.disconnect();
+    vi.useRealTimers();
+  });
+
+  it('transitions through connection states', async () => {
+    expect(client.getStatus()).toBe('idle');
+    
+    client.connect();
+    expect(client.getStatus()).toBe('connecting');
+
+    const ws = MockWebSocket.instances[0];
+    expect(ws).toBeDefined();
+    ws.triggerOpen();
+    expect(client.getStatus()).toBe('connected');
+
+    client.disconnect();
+    expect(client.getStatus()).toBe('disconnected');
+  });
+
+  it('reconnects with backoff on unclean close', async () => {
+    client.connect();
+    MockWebSocket.instances[0].triggerOpen();
+    expect(client.getStatus()).toBe('connected');
+
+    // Simulate unclean close
+    MockWebSocket.instances[0].triggerClose(false, 1006);
+    expect(client.getStatus()).toBe('error');
+    
+    // First reconnect should happen after 1000ms
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(client.getStatus()).toBe('reconnecting');
+    expect(MockWebSocket.instances.length).toBe(2);
+    
+    MockWebSocket.instances[1].triggerOpen();
+    expect(client.getStatus()).toBe('connected');
+  });
+
+  it('sends validated protocol events', async () => {
+    client.connect();
+    const ws = MockWebSocket.instances[0];
+    ws.triggerOpen();
+    
+    const result = client.send('TRANSPORT_PLAY', {});
+    
+    expect(result).toBe(true);
+    expect(ws.send).toHaveBeenCalled();
+    const sent = JSON.parse(ws.send.mock.calls[0][0]);
+    expect(sent.type).toBe('TRANSPORT_PLAY');
+    expect(sent.source).toBe('wubpad');
+  });
+
+  it('refuses to send invalid protocol events', async () => {
+    client.connect();
+    const ws = MockWebSocket.instances[0];
+    ws.triggerOpen();
+    
+    // @ts-ignore - testing runtime validation
+    const result = client.send('TRANSPORT_SEEK', {}); // requires position
+    
+    expect(result).toBe(false);
+    expect(ws.send).not.toHaveBeenCalled();
+  });
+
+  it('always sends emergency stop when connected', async () => {
+    client.connect();
+    const ws = MockWebSocket.instances[0];
+    ws.triggerOpen();
+    
+    client.send('EMERGENCY_STOP', {});
+    
+    expect(ws.send).toHaveBeenCalled();
+    const sent = JSON.parse(ws.send.mock.calls[0][0]);
+    expect(sent.type).toBe('EMERGENCY_STOP');
+  });
+
+  it('notifies listeners of inbound ENGINE_STATUS with meter data', async () => {
+    client.connect();
+    const ws = MockWebSocket.instances[0];
+    ws.triggerOpen();
+
+    let receivedStatus: any = null;
+    client.onEvent((e: any) => {
+        if (e.type === 'ENGINE_STATUS') receivedStatus = e.payload;
+    });
+
+    const statusMessage = JSON.stringify({
+        type: 'ENGINE_STATUS',
+        source: 'wublabz-server',
+        timestamp: Date.now(),
+        payload: {
+            transportState: 'playing',
+            busLevels: { drum: 0.8, bass: 0.5 }
+        }
+    });
+
+    if (ws.onmessage) {
+        ws.onmessage({ data: statusMessage });
+    }
+
+    expect(receivedStatus).toBeDefined();
+    expect(receivedStatus.transportState).toBe('playing');
+    expect(receivedStatus.busLevels.drum).toBe(0.8);
+  });
+});

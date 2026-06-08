@@ -1,59 +1,97 @@
 import { getWubLabzWsUrl } from './env.js';
+import { validateInboundEvent, type ValidatedWubLabzEvent } from '../wublabz/protocol.js';
 
-export type WubEvent = {
+export type WubConnectionStatus = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'error';
+
+export interface WubWebSocketClientOptions {
+  url?: string;
   clientId?: string;
-  timestamp: number;
-  source: string;
-  type: string;
-  payload: any;
-};
+  autoConnect?: boolean;
+}
 
 export class WubWebSocketClient {
   private ws: WebSocket | null = null;
   private reconnectTimeout: any = null;
   private reconnectDelay = 1000;
-  private listeners: Set<(event: WubEvent) => void> = new Set();
-  private statusListeners: Set<(status: 'connecting' | 'open' | 'closed' | 'error') => void> = new Set();
+  private status: WubConnectionStatus = 'idle';
+  private lastError: string | null = null;
+  private eventListeners: Set<(event: ValidatedWubLabzEvent) => void> = new Set();
+  private statusListeners: Set<(status: WubConnectionStatus, error?: string | null) => void> = new Set();
   private latency = 0;
   private heartbeatInterval: any = null;
+  private readonly url: string;
+  private readonly clientId: string;
 
-  constructor(private readonly url: string = getWubLabzWsUrl()) {}
+  constructor(options: WubWebSocketClientOptions = {}) {
+    this.url = options.url ?? getWubLabzWsUrl();
+    this.clientId = options.clientId ?? `wubpad-${Math.random().toString(36).substring(2, 9)}`;
+    if (options.autoConnect) {
+      this.connect();
+    }
+  }
 
   connect() {
-    if (this.ws?.readyState === WebSocket.OPEN) return;
+    if (this.ws?.readyState === WebSocket.OPEN || this.ws?.readyState === WebSocket.CONNECTING) return;
 
-    this.notifyStatus('connecting');
-    this.ws = new WebSocket(this.url);
+    this.cleanupReconnect();
+    this.setStatus(this.status === 'disconnected' || this.status === 'error' ? 'reconnecting' : 'connecting');
+    
+    try {
+      this.ws = new WebSocket(this.url);
+    } catch (err: any) {
+      this.handleError(`Failed to create WebSocket: ${err.message}`);
+      return;
+    }
 
     this.ws.onopen = () => {
-      console.log('WubLabz WebSocket connected');
       this.reconnectDelay = 1000;
-      this.notifyStatus('open');
+      this.lastError = null;
+      this.setStatus('connected');
       this.startHeartbeat();
     };
 
     this.ws.onmessage = (event) => {
       try {
-        const wubEvent = JSON.parse(event.data) as WubEvent;
-        if (wubEvent.type === 'HEARTBEAT') {
-          this.latency = Date.now() - wubEvent.payload.clientSent;
+        const rawEvent = JSON.parse(event.data);
+        const result = validateInboundEvent(rawEvent);
+        
+        if (result.success) {
+          const wubEvent = result.event;
+          if (wubEvent.type === 'HEARTBEAT' && wubEvent.payload.clientSent) {
+            this.latency = Date.now() - wubEvent.payload.clientSent;
+          }
+          this.eventListeners.forEach((l) => l(wubEvent));
+        } else {
+          console.warn('Received invalid protocol event', result.rejection);
         }
-        this.listeners.forEach((l) => l(wubEvent));
       } catch (err) {
         console.error('Failed to parse WubEvent', err);
       }
     };
 
-    this.ws.onclose = () => {
-      this.notifyStatus('closed');
+    this.ws.onclose = (event) => {
+      const wasConnected = this.status === 'connected';
       this.cleanup();
-      this.scheduleReconnect();
+      
+      if (!event.wasClean) {
+        this.handleError(`Connection lost (code: ${event.code})`);
+      } else {
+        this.setStatus('disconnected');
+      }
+      
+      if (wasConnected || this.status === 'reconnecting' || this.status === 'connecting') {
+        this.scheduleReconnect();
+      }
     };
 
     this.ws.onerror = (err) => {
-      console.error('WubLabz WebSocket error', err);
-      this.notifyStatus('error');
+      this.handleError('WebSocket error occurred');
     };
+  }
+
+  private handleError(message: string) {
+    this.lastError = message;
+    this.setStatus('error', message);
   }
 
   private scheduleReconnect() {
@@ -63,6 +101,13 @@ export class WubWebSocketClient {
       this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000);
       this.connect();
     }, this.reconnectDelay);
+  }
+
+  private cleanupReconnect() {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
   }
 
   private startHeartbeat() {
@@ -78,41 +123,62 @@ export class WubWebSocketClient {
     }
   }
 
-  send(type: string, payload: any = {}) {
+  send(type: ValidatedWubLabzEvent['type'], payload: any = {}): boolean {
     if (this.ws?.readyState !== WebSocket.OPEN) return false;
 
-    const event: WubEvent = {
+    const event = {
+      clientId: this.clientId,
       timestamp: Date.now(),
       source: 'wubpad',
       type,
       payload
     };
 
-    this.ws.send(JSON.stringify(event));
+    const validation = validateInboundEvent(event);
+    if (!validation.success) {
+      console.error('Refusing to send invalid protocol event', validation.rejection);
+      return false;
+    }
+
+    this.ws.send(JSON.stringify(validation.event));
     return true;
   }
 
-  onEvent(listener: (event: WubEvent) => void) {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+  onEvent(listener: (event: ValidatedWubLabzEvent) => void) {
+    this.eventListeners.add(listener);
+    return () => this.eventListeners.delete(listener);
   }
 
-  onStatusChange(listener: (status: 'connecting' | 'open' | 'closed' | 'error') => void) {
+  onStatusChange(listener: (status: WubConnectionStatus, error?: string | null) => void) {
     this.statusListeners.add(listener);
     return () => this.statusListeners.delete(listener);
   }
 
-  private notifyStatus(status: 'connecting' | 'open' | 'closed' | 'error') {
-    this.statusListeners.forEach((l) => l(status));
+  private setStatus(status: WubConnectionStatus, error: string | null = null) {
+    this.status = status;
+    this.statusListeners.forEach((l) => l(status, error));
+  }
+
+  getStatus(): WubConnectionStatus {
+    return this.status;
+  }
+
+  getLastError(): string | null {
+    return this.lastError;
   }
 
   getLatency() {
     return this.latency;
   }
 
-  close() {
-    if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
+  disconnect() {
+    this.cleanupReconnect();
     this.cleanup();
-    this.ws?.close();
+    if (this.ws) {
+      this.ws.onclose = null; // Prevent auto-reconnect
+      this.ws.close();
+      this.ws = null;
+    }
+    this.setStatus('disconnected');
   }
 }

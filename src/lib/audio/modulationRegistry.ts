@@ -11,19 +11,48 @@ export const MODULATION_REGISTRY: Record<string, Record<string, ModulationTarget
   filter: {
     cutoff: { min: 20, max: 20000, defaultValue: 800, unit: 'Hz', rampMin: 0, rampMax: 2 },
     resonance: { min: 0.1, max: 20, defaultValue: 1, unit: 'Q', rampMin: 0, rampMax: 2 },
+    active: { min: 0, max: 1, defaultValue: 1, unit: 'boolean', rampMin: 0, rampMax: 0 },
   },
-  reverb: {
-    wet: { min: 0, max: 1, defaultValue: 0.2, unit: 'normalized', rampMin: 0, rampMax: 4 },
+  distortion: {
+    drive: { min: 0, max: 1, defaultValue: 0, unit: 'normalized', rampMin: 0, rampMax: 2 },
+    active: { min: 0, max: 1, defaultValue: 0, unit: 'boolean', rampMin: 0, rampMax: 0 },
   },
   delay: {
     feedback: { min: 0, max: 0.85, defaultValue: 0.25, unit: 'normalized', rampMin: 0, rampMax: 3 },
     wet: { min: 0, max: 1, defaultValue: 0.15, unit: 'normalized', rampMin: 0, rampMax: 3 },
+    active: { min: 0, max: 1, defaultValue: 0, unit: 'boolean', rampMin: 0, rampMax: 0 },
   },
-  distortion: {
-    drive: { min: 0, max: 1, defaultValue: 0, unit: 'normalized', rampMin: 0, rampMax: 2 },
+  reverb: {
+    wet: { min: 0, max: 1, defaultValue: 0.2, unit: 'normalized', rampMin: 0, rampMax: 4 },
+    active: { min: 0, max: 1, defaultValue: 1, unit: 'boolean', rampMin: 0, rampMax: 0 },
   },
   master: {
     volume: { min: 0, max: 1, defaultValue: 0.85, unit: 'normalized', rampMin: 0, rampMax: 1 },
+  },
+  drum: {
+    volume: { min: 0, max: 1, defaultValue: 0.85, unit: 'normalized', rampMin: 0, rampMax: 1 },
+    mute: { min: 0, max: 1, defaultValue: 0, unit: 'boolean', rampMin: 0, rampMax: 0 },
+    solo: { min: 0, max: 1, defaultValue: 0, unit: 'boolean', rampMin: 0, rampMax: 0 },
+  },
+  bass: {
+    volume: { min: 0, max: 1, defaultValue: 0.85, unit: 'normalized', rampMin: 0, rampMax: 1 },
+    mute: { min: 0, max: 1, defaultValue: 0, unit: 'boolean', rampMin: 0, rampMax: 0 },
+    solo: { min: 0, max: 1, defaultValue: 0, unit: 'boolean', rampMin: 0, rampMax: 0 },
+  },
+  melody: {
+    volume: { min: 0, max: 1, defaultValue: 0.85, unit: 'normalized', rampMin: 0, rampMax: 1 },
+    mute: { min: 0, max: 1, defaultValue: 0, unit: 'boolean', rampMin: 0, rampMax: 0 },
+    solo: { min: 0, max: 1, defaultValue: 0, unit: 'boolean', rampMin: 0, rampMax: 0 },
+  },
+  vocal: {
+    volume: { min: 0, max: 1, defaultValue: 0.85, unit: 'normalized', rampMin: 0, rampMax: 1 },
+    mute: { min: 0, max: 1, defaultValue: 0, unit: 'boolean', rampMin: 0, rampMax: 0 },
+    solo: { min: 0, max: 1, defaultValue: 0, unit: 'boolean', rampMin: 0, rampMax: 0 },
+  },
+  fx: {
+    volume: { min: 0, max: 1, defaultValue: 0.85, unit: 'normalized', rampMin: 0, rampMax: 1 },
+    mute: { min: 0, max: 1, defaultValue: 0, unit: 'boolean', rampMin: 0, rampMax: 0 },
+    solo: { min: 0, max: 1, defaultValue: 0, unit: 'boolean', rampMin: 0, rampMax: 0 },
   }
 };
 

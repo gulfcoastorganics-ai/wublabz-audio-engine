@@ -36,6 +36,7 @@ async function startServer() {
     server.log.info(`Client connected: ${clientId}`);
 
     const sendResponse = (response: ServerResponse) => {
+      if (connection.socket.readyState !== 1) return;
       connection.socket.send(JSON.stringify({
         clientId,
         timestamp: Date.now(),
@@ -43,6 +44,14 @@ async function startServer() {
         ...response
       }));
     };
+
+    // Telemetry loop (50ms = 20Hz for meters)
+    const telemetryInterval = setInterval(() => {
+        sendResponse({
+            type: 'ENGINE_STATUS',
+            payload: runtimeController.getRuntimeDiagnostics()
+        });
+    }, 50);
 
     // Send initial status
     sendResponse({
@@ -64,38 +73,9 @@ async function startServer() {
       const event = validation.event;
 
       try {
-        switch (event.type) {
-          case 'HEARTBEAT':
-            sendResponse({
-              type: 'HEARTBEAT',
-              payload: { ...event.payload, serverReceived: Date.now() }
-            });
-            sendResponse({
-              type: 'ENGINE_STATUS',
-              payload: runtimeController.getRuntimeDiagnostics()
-            });
-            break;
-
-          case 'EMERGENCY_STOP':
-            server.log.warn('EMERGENCY STOP RECEIVED');
-            sendResponse(runtimeController.handleEmergencyStop());
-            break;
-
-          case 'TRANSPORT_CONTROL':
-            sendResponse(runtimeController.handleTransportControl(event.payload));
-            break;
-
-          case 'SCENE_TRIGGER':
-            sendResponse(runtimeController.handleSceneTrigger(event.payload));
-            break;
-
-          case 'MODULATION':
-            sendResponse(runtimeController.handleModulation(event.payload));
-            break;
-
-          case 'PERFORMANCE_MACRO':
-            sendResponse(runtimeController.handlePerformanceMacro(event.payload));
-            break;
+        const response = runtimeController.handleIntent(event);
+        if (response) {
+            sendResponse(response);
         }
       } catch (err) {
         server.log.error(err, 'Failed to handle WebSocket event');
@@ -104,6 +84,11 @@ async function startServer() {
 
     connection.socket.on('close', () => {
       server.log.info(`Client disconnected: ${clientId}`);
+      clearInterval(telemetryInterval);
+    });
+
+    connection.socket.on('error', () => {
+        clearInterval(telemetryInterval);
     });
   });
 

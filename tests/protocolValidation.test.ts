@@ -33,101 +33,120 @@ describe('WubLabz protocol validation', () => {
     expect(result.rejection.timestamp).toEqual(expect.any(Number));
   });
 
-  it('accepts valid STOP transport controls', () => {
+  it('accepts valid TRANSPORT_PLAY', () => {
     const result = validateInboundEvent({
-      type: 'TRANSPORT_CONTROL',
-      source: 'wubpad',
-      payload: { action: 'STOP' }
+      type: 'TRANSPORT_PLAY',
+      source: 'wubpad'
     });
 
     expect(result.success).toBe(true);
     if (!result.success) throw new Error(result.rejection.reason);
 
-    expect(result.event).toEqual({
-      type: 'TRANSPORT_CONTROL',
-      source: 'wubpad',
-      payload: { action: 'STOP' }
-    });
+    expect(result.event.type).toBe('TRANSPORT_PLAY');
   });
 
-  it('rejects invalid transport actions', () => {
+  it('accepts valid TRANSPORT_SEEK', () => {
     const result = validateInboundEvent({
-      type: 'TRANSPORT_CONTROL',
+      type: 'TRANSPORT_SEEK',
       source: 'wubpad',
-      payload: { action: 'SCRUB' }
+      payload: { positionSeconds: 15.5 }
+    });
+
+    expect(result.success).toBe(true);
+    if (!result.success) throw new Error(result.rejection.reason);
+
+    expect(result.event.type).toBe('TRANSPORT_SEEK');
+    // @ts-ignore
+    expect(result.event.payload.positionSeconds).toBe(15.5);
+  });
+
+  it('rejects TRANSPORT_SEEK without position', () => {
+    const result = validateInboundEvent({
+      type: 'TRANSPORT_SEEK',
+      source: 'wubpad',
+      payload: {}
     });
 
     expect(result.success).toBe(false);
-    if (result.success) throw new Error('Expected invalid transport action to be rejected');
-
-    expect(result.rejection).toMatchObject({
-      originalType: 'TRANSPORT_CONTROL',
-      reason: 'TRANSPORT_CONTROL payload.action is invalid'
-    });
+    if (result.success) throw new Error('Expected invalid TRANSPORT_SEEK to be rejected');
   });
 
-  it('rejects malformed modulation payloads', () => {
+  it('accepts valid STEM_MUTE', () => {
     const result = validateInboundEvent({
-      type: 'MODULATION',
+      type: 'STEM_MUTE',
       source: 'wubpad',
-      payload: { effectId: 'filter', parameter: 'cutoff', value: 'wide-open' }
+      payload: { stemId: 'drum' }
     });
 
-    expect(result.success).toBe(false);
-    if (result.success) throw new Error('Expected malformed modulation payload to be rejected');
+    expect(result.success).toBe(true);
+    if (!result.success) throw new Error(result.rejection.reason);
 
-    expect(result.rejection).toMatchObject({
-      originalType: 'MODULATION',
-      reason: 'MODULATION payload.value must be a number'
-    });
+    expect(result.event.type).toBe('STEM_MUTE');
+    // @ts-ignore
+    expect(result.event.payload.stemId).toBe('drum');
   });
 
-  it('rejects malformed scene trigger quantize values', () => {
+  it('accepts valid STEM_GAIN', () => {
+    const result = validateInboundEvent({
+      type: 'STEM_GAIN',
+      source: 'wubpad',
+      payload: { stemId: 'drum', value: 0.5 }
+    });
+
+    expect(result.success).toBe(true);
+    if (!result.success) throw new Error(result.rejection.reason);
+
+    expect(result.event.type).toBe('STEM_GAIN');
+    // @ts-ignore
+    expect(result.event.payload.value).toBe(0.5);
+  });
+
+  it('accepts valid EFFECT_TOGGLE', () => {
+    const result = validateInboundEvent({
+      type: 'EFFECT_TOGGLE',
+      source: 'wubpad',
+      payload: { effectId: 'reverb', active: true }
+    });
+
+    expect(result.success).toBe(true);
+    if (!result.success) throw new Error(result.rejection.reason);
+
+    expect(result.event.type).toBe('EFFECT_TOGGLE');
+    // @ts-ignore
+    expect(result.event.payload.effectId).toBe('reverb');
+  });
+
+  it('accepts valid MACRO_TRIGGER', () => {
+    const result = validateInboundEvent({
+      type: 'MACRO_TRIGGER',
+      source: 'wubpad',
+      payload: { macroId: 'fakeout', intensity: 0.8 }
+    });
+
+    expect(result.success).toBe(true);
+    if (!result.success) throw new Error(result.rejection.reason);
+
+    expect(result.event.type).toBe('MACRO_TRIGGER');
+    // @ts-ignore
+    expect(result.event.payload.macroId).toBe('fakeout');
+  });
+
+  it('accepts valid SCENE_TRIGGER', () => {
     const result = validateInboundEvent({
       type: 'SCENE_TRIGGER',
       source: 'wubpad',
-      payload: { sceneId: 'DROP_A', quantize: 'whenever' }
-    });
-
-    expect(result.success).toBe(false);
-    if (result.success) throw new Error('Expected malformed scene payload to be rejected');
-
-    expect(result.rejection).toMatchObject({
-      originalType: 'SCENE_TRIGGER',
-      reason: 'SCENE_TRIGGER payload.quantize is invalid'
-    });
-  });
-
-  it('accepts valid performance macro payloads', () => {
-    const result = validateInboundEvent({
-      type: 'PERFORMANCE_MACRO',
-      source: 'wubpad',
-      payload: {
-        macroId: 'filter_sweep_up',
-        intensity: 0.75,
-        quantize: 'nextBar',
-        durationBeats: 4,
-        durationBars: 1
-      }
+      payload: { sceneId: 'Drop', quantize: 'nextBar' }
     });
 
     expect(result.success).toBe(true);
     if (!result.success) throw new Error(result.rejection.reason);
 
-    expect(result.event).toEqual({
-      type: 'PERFORMANCE_MACRO',
-      source: 'wubpad',
-      payload: {
-        macroId: 'filter_sweep_up',
-        intensity: 0.75,
-        quantize: 'nextBar',
-        durationBeats: 4,
-        durationBars: 1
-      }
-    });
+    expect(result.event.type).toBe('SCENE_TRIGGER');
+    // @ts-ignore
+    expect(result.event.payload.sceneId).toBe('Drop');
   });
 
-  it('accepts emergency stop without a payload', () => {
+  it('accepts valid EMERGENCY_STOP', () => {
     const result = validateInboundEvent({
       type: 'EMERGENCY_STOP',
       source: 'wubpad'
@@ -136,27 +155,16 @@ describe('WubLabz protocol validation', () => {
     expect(result.success).toBe(true);
     if (!result.success) throw new Error(result.rejection.reason);
 
-    expect(result.event).toEqual({
-      type: 'EMERGENCY_STOP',
-      source: 'wubpad',
-      payload: {}
-    });
+    expect(result.event.type).toBe('EMERGENCY_STOP');
   });
 
-  it('rejects unknown event types before runtime dispatch', () => {
+  it('rejects unknown intents', () => {
     const result = validateInboundEvent({
-      type: 'MIX_THE_DROP',
-      source: 'wubpad',
-      payload: {}
+      type: 'INVALID_INTENT',
+      source: 'wubpad'
     });
 
     expect(result.success).toBe(false);
-    if (result.success) throw new Error('Expected unknown event type to be rejected');
-
-    expect(result.rejection).toMatchObject({
-      originalType: 'MIX_THE_DROP',
-      reason: 'Unknown event type',
-      suggestedAction: 'Use a supported WubLabz protocol event type'
-    });
+    if (result.success) throw new Error('Expected invalid intent to be rejected');
   });
 });

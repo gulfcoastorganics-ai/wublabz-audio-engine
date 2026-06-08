@@ -497,10 +497,12 @@ export class ToneJsAdapter {
       }
 
       this.activePlayers.set(event.id, player);
-      this.scheduleCleanup(event.id, clip);
 
-      const offset = resolveClipOffsetSeconds(event, clip);
-      const duration = resolveClipDurationSeconds(event, clip, offset);
+      const effectivePlaybackRate = typeof event.payload?.playbackRate === 'number' ? event.payload.playbackRate : 1;
+      this.scheduleCleanup(event.id, clip, effectivePlaybackRate);
+
+      const offset = resolveClipOffsetSeconds(event, clip, scheduledTime);
+      const duration = resolveClipDurationSeconds(event, clip, offset, scheduledTime);
       player.start(scheduledTime, offset, duration);
       this.eventHandler?.(event, command);
     } catch {
@@ -509,8 +511,10 @@ export class ToneJsAdapter {
     }
   }
 
-  private scheduleCleanup(eventId: string, clip: LoadedClip<ToneAudioBufferLike>): void {
-    const cleanupDelayMs = Math.max(100, Math.round((clip.duration + 0.25) * 1000));
+  private scheduleCleanup(eventId: string, clip: LoadedClip<ToneAudioBufferLike>, playbackRate: number = 1): void {
+    const rate = playbackRate > 0 ? playbackRate : 1;
+    const realDuration = clip.duration / rate;
+    const cleanupDelayMs = Math.max(100, Math.round((realDuration + 0.5) * 1000));
     const timer = setTimeout(() => {
       this.disposeActivePlayer(eventId);
     }, cleanupDelayMs);
@@ -660,29 +664,39 @@ function resolveCommandClipId(event: TimelineEventV2, action: TimelineRouteActio
   return typeof clipId === 'string' && clipId.trim() ? clipId : event.stemId ?? event.sourceId;
 }
 
-function resolveClipOffsetSeconds(event: ScheduledTimelineEvent, clip: LoadedClip<ToneAudioBufferLike>): number {
+function resolveClipOffsetSeconds(
+  event: ScheduledTimelineEvent,
+  clip: LoadedClip<ToneAudioBufferLike>,
+  actualStartTime?: number
+): number {
   const explicitOffset = event.payload?.clipOffsetSeconds;
   if (typeof explicitOffset === 'number' && Number.isFinite(explicitOffset)) {
     return clamp(explicitOffset, 0, Math.max(0, clip.duration));
   }
 
-  if (!Number.isFinite(event.startTime)) {
-    return 0;
-  }
+  const baseStartTime = event.startTime;
+  const transportPosition = actualStartTime ?? baseStartTime;
+  const elapsed = Math.max(0, transportPosition - baseStartTime);
 
   if (clip.duration <= 0) {
-    return Math.max(0, event.startTime);
+    return elapsed;
   }
 
-  return clamp(event.startTime % clip.duration, 0, Math.max(0, clip.duration));
+  // Calculate offset within the clip, accounting for loops
+  return clamp(elapsed % clip.duration, 0, Math.max(0, clip.duration));
 }
 
 function resolveClipDurationSeconds(
   event: ScheduledTimelineEvent,
   clip: LoadedClip<ToneAudioBufferLike>,
-  offset: number
+  offset: number,
+  actualStartTime?: number
 ): number {
-  const requestedDuration = Math.max(0.01, event.endTime - event.startTime);
+  const baseStartTime = event.startTime;
+  const transportPosition = actualStartTime ?? baseStartTime;
+  const elapsed = Math.max(0, transportPosition - baseStartTime);
+
+  const requestedDuration = Math.max(0.01, event.endTime - event.startTime - elapsed);
   if (clip.duration <= 0) {
     return requestedDuration;
   }

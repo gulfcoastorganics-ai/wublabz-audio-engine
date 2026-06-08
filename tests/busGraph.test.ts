@@ -42,6 +42,10 @@ describe('BusGraph', () => {
         constructor() { counters.channel += 1; }
         dispose = () => { counters.dispose += 1; };
       },
+      Meter: class {
+        getValue = () => 0;
+        dispose = () => { counters.dispose += 1; };
+      },
       Destination: {},
       getContext: () => ({ destination: {} }),
       now: () => 0
