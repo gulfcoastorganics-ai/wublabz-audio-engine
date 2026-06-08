@@ -121,4 +121,78 @@ describe('ToneJsAdapter', () => {
     expect(disposeCalls).toBe(1);
     expect(adapter.getMetrics().droppedEvents).toBe(1);
   });
+
+  it('does not trigger audio loading, playback, or increment droppedEvents for marker/control events', async () => {
+    let scheduledCallback: ((time: number) => void) | undefined;
+    let startCalls = 0;
+    let eventHandlerCalls = 0;
+
+    class TestPlayer implements TonePlayerLike {
+      constructor(readonly buffer?: unknown) {}
+      start() { startCalls += 1; return this; }
+      stop() { return this; }
+      dispose() { return this; }
+    }
+
+    const runtime: ToneLikeRuntime = {
+      start: async () => undefined,
+      now: () => 0,
+      Transport: {
+        bpm: { value: 120 },
+        seconds: 0,
+        scheduleOnce: (callback) => {
+          scheduledCallback = callback;
+          return 1;
+        },
+        clear: () => undefined,
+        cancel: () => undefined,
+        start: () => undefined,
+        pause: () => undefined,
+        stop: () => undefined
+      },
+      Player: TestPlayer,
+      ToneAudioBuffer: {
+        fromUrl: async () => ({ duration: 1 })
+      }
+    };
+
+    const clipManager = new AudioClipManager<ToneAudioBufferLike>(async () => ({
+      buffer: { duration: 1 },
+      duration: 1
+    }));
+    const adapter = new ToneJsAdapter({ runtime, clipManager });
+    
+    adapter.setEventHandler(() => {
+      eventHandlerCalls += 1;
+    });
+
+    const markerEvent: ScheduledTimelineEvent = {
+      id: 'marker-1',
+      type: 'marker',
+      sourceId: 'source-1',
+      stemId: undefined,
+      sectionId: 'drop-1',
+      startTime: 0,
+      endTime: 1,
+      beatStart: 0,
+      beatEnd: 4,
+      barStart: 0,
+      barEnd: 1,
+      energyLevel: 0.8,
+      enabled: true,
+      probability: 1,
+      payload: { sectionType: 'drop' },
+      scheduledIndex: 0,
+      scheduledStartTime: 0,
+      scheduledEndTime: 1
+    };
+
+    adapter.scheduleEvent(markerEvent);
+    scheduledCallback?.(0);
+    await Promise.resolve();
+
+    expect(startCalls).toBe(0);
+    expect(eventHandlerCalls).toBe(1);
+    expect(adapter.getMetrics().droppedEvents).toBe(0);
+  });
 });

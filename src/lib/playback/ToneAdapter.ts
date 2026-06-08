@@ -449,7 +449,7 @@ export class ToneJsAdapter {
     command: ScheduledToneEvent,
     scheduledTime: number
   ): Promise<void> {
-    if (command.commandType === 'noop') {
+    if (command.commandType === 'noop' || command.commandType === 'marker') {
       this.eventHandler?.(event, command);
       return;
     }
