@@ -31,13 +31,19 @@ export class WubWebSocketClient {
   }
 
   connect() {
-    if (this.ws?.readyState === WebSocket.OPEN || this.ws?.readyState === WebSocket.CONNECTING) return;
+    const WebSocketCtor = getWebSocketConstructor();
+    if (!WebSocketCtor) {
+      this.handleError('WebSocket is unavailable in this browser/runtime');
+      return;
+    }
+
+    if (this.ws?.readyState === WebSocketCtor.OPEN || this.ws?.readyState === WebSocketCtor.CONNECTING) return;
 
     this.cleanupReconnect();
     this.setStatus(this.status === 'disconnected' || this.status === 'error' ? 'reconnecting' : 'connecting');
     
     try {
-      this.ws = new WebSocket(this.url);
+      this.ws = new WebSocketCtor(this.url);
     } catch (err: any) {
       this.handleError(`Failed to create WebSocket: ${err.message}`);
       return;
@@ -124,7 +130,8 @@ export class WubWebSocketClient {
   }
 
   send(type: ValidatedWubLabzEvent['type'], payload: any = {}): boolean {
-    if (this.ws?.readyState !== WebSocket.OPEN) return false;
+    const WebSocketCtor = getWebSocketConstructor();
+    if (!WebSocketCtor || this.ws?.readyState !== WebSocketCtor.OPEN) return false;
 
     const event = {
       clientId: this.clientId,
@@ -181,4 +188,8 @@ export class WubWebSocketClient {
     }
     this.setStatus('disconnected');
   }
+}
+
+function getWebSocketConstructor(): typeof WebSocket | null {
+  return typeof WebSocket === 'undefined' ? null : WebSocket;
 }

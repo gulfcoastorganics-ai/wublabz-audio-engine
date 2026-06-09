@@ -1,6 +1,13 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { getWubLabzHttpUrl, getWubLabzWsUrl, isMockMode } from './env.js';
+import { getWubLabzWsUrl, isMockMode } from './env.js';
 import { WubWebSocketClient, type WubConnectionStatus } from './WebSocketClient.js';
+import {
+  readStorageJson,
+  readStorageValue,
+  removeStorageValue,
+  writeStorageJson,
+  writeStorageValue
+} from './safeStorage.js';
 
 // --- Constants & Defaults ---
 const STORAGE_KEYS = {
@@ -33,6 +40,20 @@ const DEFAULT_MACROS = [
 ];
 
 const DEFAULT_SCENES = ['Intro', 'Build', 'Pre-drop', 'Drop', 'Breakdown', 'Final Drop', 'Outro'];
+
+type MidiMappingPayload = {
+  macroId?: string;
+  sceneId?: string;
+  [key: string]: unknown;
+};
+
+type MidiMapping = {
+  type: string;
+  payload: MidiMappingPayload;
+};
+
+type MidiMappings = Record<string, MidiMapping>;
+type MidiStatus = 'unavailable' | 'requesting' | 'ready' | 'blocked';
 
 // --- Styles ---
 const COLORS = {
@@ -131,10 +152,122 @@ const Meter: React.FC<{ value: number }> = ({ value }) => {
   );
 };
 
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function isMidiMappings(value: unknown): value is MidiMappings {
+  if (!isRecord(value)) return false;
+
+  return Object.values(value).every((candidate) => {
+    if (!isRecord(candidate)) return false;
+    return typeof candidate.type === 'string' && isRecord(candidate.payload);
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, any> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function getRequestMIDIAccess(): (() => Promise<any>) | null {
+  try {
+    const navigatorRef = (globalThis as { navigator?: { requestMIDIAccess?: () => Promise<any> } }).navigator;
+    return typeof navigatorRef?.requestMIDIAccess === 'function'
+      ? navigatorRef.requestMIDIAccess.bind(navigatorRef)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function collectMidiInputNames(access: any): string[] {
+  const names: string[] = [];
+  forEachMidiInput(access, (input: any) => {
+    if (typeof input?.name === 'string' && input.name.length > 0) {
+      names.push(input.name);
+    }
+  });
+
+  return names;
+}
+
+function forEachMidiInput(access: any, callback: (input: any) => void): void {
+  const inputs = access?.inputs;
+  if (!inputs) return;
+
+  if (typeof inputs.forEach === 'function') {
+    inputs.forEach(callback);
+    return;
+  }
+
+  if (typeof inputs[Symbol.iterator] === 'function') {
+    for (const input of inputs) {
+      callback(Array.isArray(input) ? input[1] : input);
+    }
+  }
+}
+
+function readMidiMessageData(message: any): number[] {
+  try {
+    return Array.from(message?.data ?? []) as number[];
+  } catch {
+    return [];
+  }
+}
+
+function confirmAction(message: string): boolean {
+  try {
+    const confirmFn = (globalThis as { confirm?: (message: string) => boolean }).confirm;
+    return typeof confirmFn === 'function' ? confirmFn(message) : true;
+  } catch {
+    return true;
+  }
+}
+
+function toErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function getFiniteNumber(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function getOptionalFiniteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function getString(value: unknown, fallback: string): string {
+  return typeof value === 'string' && value.length > 0 ? value : fallback;
+}
+
+function formatUpper(value: unknown, fallback: string): string {
+  return typeof value === 'string' && value.length > 0 ? value.toUpperCase() : fallback;
+}
+
+function hasMidiMappingForMacro(mappings: MidiMappings, macroId: string): boolean {
+  return Object.values(mappings).some((mapping) => mapping.payload.macroId === macroId);
+}
+
+function formatMidiStatus(status: MidiStatus): string {
+  switch (status) {
+    case 'requesting':
+      return 'REQUESTING ACCESS';
+    case 'ready':
+      return 'READY';
+    case 'blocked':
+      return 'BLOCKED';
+    case 'unavailable':
+    default:
+      return 'UNAVAILABLE';
+  }
+}
+
 export const WubPad: React.FC = () => {
   // --- Connection State ---
-  const [wsUrl, setWsUrl] = useState(() => localStorage.getItem(STORAGE_KEYS.WS_URL) || getWubLabzWsUrl());
-  const [urlHistory, setUrlHistory] = useState<string[]>(() => JSON.parse(localStorage.getItem(STORAGE_KEYS.URL_HISTORY) || '[]'));
+  const [wsUrl, setWsUrl] = useState(() => readStorageValue(STORAGE_KEYS.WS_URL) || getWubLabzWsUrl());
+  const [urlHistory, setUrlHistory] = useState<string[]>(() =>
+    readStorageJson(STORAGE_KEYS.URL_HISTORY, [], isStringArray)
+  );
   const [status, setStatus] = useState<WubConnectionStatus>('idle');
   const [lastError, setLastError] = useState<string | null>(null);
   const [latency, setLatency] = useState(0);
@@ -143,16 +276,21 @@ export const WubPad: React.FC = () => {
   // --- MIDI State ---
   const [midiDevices, setMidiDevices] = useState<string[]>([]);
   const [lastMidiEvent, setLastMidiEvent] = useState<{ status: number, data1: number, data2: number } | null>(null);
-  const [midiMappings, setMidiMappings] = useState<Record<string, { type: string, payload: any }>>(() => 
-    JSON.parse(localStorage.getItem(STORAGE_KEYS.MIDI_MAPPINGS) || '{}')
+  const [midiMappings, setMidiMappings] = useState<MidiMappings>(() =>
+    readStorageJson(STORAGE_KEYS.MIDI_MAPPINGS, {}, isMidiMappings)
   );
+  const [midiStatus, setMidiStatus] = useState<MidiStatus>('unavailable');
+  const [midiError, setMidiError] = useState<string | null>(null);
   const [learningTarget, setLearningTarget] = useState<{ id: string, label: string } | null>(null);
 
   // --- Settings State ---
-  const [confirmationsEnabled, setConfirmationsEnabled] = useState(() => localStorage.getItem(STORAGE_KEYS.CONFIRMATIONS) === 'true');
+  const [confirmationsEnabled, setConfirmationsEnabled] = useState(() => readStorageValue(STORAGE_KEYS.CONFIRMATIONS) === 'true');
   const [showSettings, setShowSettings] = useState(false);
 
   const clientRef = useRef<WubWebSocketClient | null>(null);
+  const learningTargetRef = useRef(learningTarget);
+  const midiMappingsRef = useRef(midiMappings);
+  const handleIntentRef = useRef<((type: string, payload?: any, force?: boolean) => void) | null>(null);
 
   // --- Handlers ---
   const connect = useCallback((targetUrl?: string) => {
@@ -160,17 +298,24 @@ export const WubPad: React.FC = () => {
     if (clientRef.current) {
         clientRef.current.disconnect();
     }
-    
-    clientRef.current = new WubWebSocketClient({ url });
+
+    try {
+      clientRef.current = new WubWebSocketClient({ url });
+    } catch (err) {
+      setStatus('error');
+      setLastError(`WebSocket setup failed: ${toErrorMessage(err)}`);
+      return;
+    }
     
     clientRef.current.onStatusChange((s, err) => {
       setStatus(s);
+      if (s === 'connected') setLastError(null);
       if (err) setLastError(err);
       if (s === 'connected') {
-        localStorage.setItem(STORAGE_KEYS.WS_URL, url);
+        writeStorageValue(STORAGE_KEYS.WS_URL, url);
         setUrlHistory(prev => {
             const next = [url, ...prev.filter(u => u !== url)].slice(0, 5);
-            localStorage.setItem(STORAGE_KEYS.URL_HISTORY, JSON.stringify(next));
+            writeStorageJson(STORAGE_KEYS.URL_HISTORY, next);
             return next;
         });
       }
@@ -194,50 +339,98 @@ export const WubPad: React.FC = () => {
                            (type === 'MACRO_TRIGGER' && payload.macroId === 'reset');
         
         if (needsConfirm && type !== 'EMERGENCY_STOP') {
-            if (!window.confirm(`Trigger ${type}?`)) return;
+            if (!confirmAction(`Trigger ${type}?`)) return;
         }
     }
-    clientRef.current?.send(type as any, payload);
-  }, [confirmationsEnabled]);
+    const sent = clientRef.current?.send(type as any, payload) ?? false;
+    if (!sent && status !== 'connected') {
+      setLastError('WebSocket is not connected. Start WubLabz or reconnect before sending controls.');
+    }
+  }, [confirmationsEnabled, status]);
 
   const resetMidiMappings = () => {
-    if (window.confirm('Reset all MIDI mappings?')) {
+    if (confirmAction('Reset all MIDI mappings?')) {
         setMidiMappings({});
-        localStorage.removeItem(STORAGE_KEYS.MIDI_MAPPINGS);
+        midiMappingsRef.current = {};
+        removeStorageValue(STORAGE_KEYS.MIDI_MAPPINGS);
     }
   };
 
   // --- Effects ---
   useEffect(() => {
     connect();
-    
-    let midiAccess: any = null;
 
-    if (typeof navigator !== 'undefined' && (navigator as any).requestMIDIAccess) {
-      (navigator as any).requestMIDIAccess().then((access: any) => {
+    return () => {
+      clientRef.current?.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    learningTargetRef.current = learningTarget;
+  }, [learningTarget]);
+
+  useEffect(() => {
+    midiMappingsRef.current = midiMappings;
+  }, [midiMappings]);
+
+  useEffect(() => {
+    handleIntentRef.current = handleIntent;
+  }, [handleIntent]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let midiAccess: any = null;
+    const requestMIDIAccess = getRequestMIDIAccess();
+
+    if (!requestMIDIAccess) {
+      setMidiStatus('unavailable');
+      setMidiDevices([]);
+      return;
+    }
+
+    setMidiStatus('requesting');
+    setMidiError(null);
+
+    requestMIDIAccess()
+      .then((access: any) => {
+        if (cancelled) return;
         midiAccess = access;
         const updateDevices = () => {
-          const devices: string[] = [];
-          access.inputs.forEach((input: any) => devices.push(input.name));
+          const devices = collectMidiInputNames(access);
           setMidiDevices(devices);
         };
         updateDevices();
-        access.onstatechange = updateDevices;
+        setMidiStatus('ready');
+
+        if ('onstatechange' in access) {
+          access.onstatechange = updateDevices;
+        }
         
-        access.inputs.forEach((input: any) => {
+        forEachMidiInput(access, (input: any) => {
           input.onmidimessage = (message: any) => {
-            const [s, d1, d2] = message.data;
+            const [s, d1, d2] = readMidiMessageData(message);
+            if (!Number.isFinite(s) || !Number.isFinite(d1) || !Number.isFinite(d2)) return;
+
             setLastMidiEvent({ status: s, data1: d1, data2: d2 });
+            const currentLearningTarget = learningTargetRef.current;
             
             // Learning mode
-            if (learningTarget) {
+            if (currentLearningTarget) {
                 if (s === 144 && d2 > 0) { // Note on
                     const key = `note-${d1}`;
                     setMidiMappings(prev => {
-                        const next = { ...prev, [key]: { type: learningTarget.id.startsWith('SCENE') ? 'SCENE_TRIGGER' : 'MACRO_TRIGGER', payload: { macroId: learningTarget.id, sceneId: learningTarget.label } } };
-                        localStorage.setItem(STORAGE_KEYS.MIDI_MAPPINGS, JSON.stringify(next));
+                        const next = {
+                          ...prev,
+                          [key]: {
+                            type: currentLearningTarget.id.startsWith('SCENE') ? 'SCENE_TRIGGER' : 'MACRO_TRIGGER',
+                            payload: { macroId: currentLearningTarget.id, sceneId: currentLearningTarget.label }
+                          }
+                        };
+                        midiMappingsRef.current = next;
+                        writeStorageJson(STORAGE_KEYS.MIDI_MAPPINGS, next);
                         return next;
                     });
+                    learningTargetRef.current = null;
                     setLearningTarget(null);
                 }
                 return;
@@ -245,26 +438,31 @@ export const WubPad: React.FC = () => {
 
             // Normal MIDI trigger
             if (s === 144 && d2 > 0) {
-                const mapping = midiMappings[`note-${d1}`];
+                const mapping = midiMappingsRef.current[`note-${d1}`];
                 if (mapping) {
-                    handleIntent(mapping.type, mapping.payload);
+                    handleIntentRef.current?.(mapping.type, mapping.payload);
                 }
             }
           };
         });
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setMidiStatus('blocked');
+        setMidiDevices([]);
+        setMidiError(toErrorMessage(err));
       });
-    }
 
     return () => {
-      clientRef.current?.disconnect();
+      cancelled = true;
       if (midiAccess) {
           midiAccess.onstatechange = null;
-          midiAccess.inputs.forEach((input: any) => {
+          forEachMidiInput(midiAccess, (input: any) => {
               input.onmidimessage = null;
           });
       }
     };
-  }, [connect, learningTarget, midiMappings, handleIntent]);
+  }, []);
 
   // --- Rendering Helpers ---
   const getStatusColor = () => {
@@ -279,10 +477,17 @@ export const WubPad: React.FC = () => {
 
   const getLevel = (bus: string) => {
       const raw = engineDiagnostics?.busLevels?.[bus];
-      if (raw === undefined || raw === -Infinity) return 0;
+      if (!Number.isFinite(raw) || raw === -Infinity) return 0;
       // Convert linear to normalized for display
       return raw; 
   };
+
+  const transportState = formatUpper(engineDiagnostics?.transportState, 'STOPPED');
+  const currentScene = getString(engineDiagnostics?.currentScene, '---');
+  const currentBar = getFiniteNumber(engineDiagnostics?.currentBar, 0);
+  const currentBeat = getFiniteNumber(engineDiagnostics?.currentBeat, 1);
+  const currentPhrase = getFiniteNumber(engineDiagnostics?.currentPhrase, 1);
+  const bpm = getOptionalFiniteNumber(engineDiagnostics?.bpm);
 
   return (
     <div style={styles.container}>
@@ -338,7 +543,7 @@ export const WubPad: React.FC = () => {
                     checked={confirmationsEnabled} 
                     onChange={(e) => {
                         setConfirmationsEnabled(e.target.checked);
-                        localStorage.setItem(STORAGE_KEYS.CONFIRMATIONS, e.target.checked.toString());
+                        writeStorageValue(STORAGE_KEYS.CONFIRMATIONS, e.target.checked.toString());
                     }} 
                 />
                 Enable Confirmations
@@ -352,7 +557,7 @@ export const WubPad: React.FC = () => {
       <section style={styles.section}>
         <div style={styles.sectionTitle}>
             Transport 
-            <span>{engineDiagnostics?.transportState?.toUpperCase() || 'STOPPED'}</span>
+            <span>{transportState}</span>
         </div>
         <div style={{ ...styles.grid, gridTemplateColumns: '1fr 1fr 1fr' }}>
           <button style={styles.button} onClick={() => handleIntent('TRANSPORT_PLAY')}>PLAY</button>
@@ -365,7 +570,7 @@ export const WubPad: React.FC = () => {
             type="range" 
             style={styles.slider} 
             min="0" max="600" step="1" 
-            value={engineDiagnostics?.currentBar * 2 || 0} // Dummy progress
+            value={currentBar * 2} // Dummy progress
             onChange={(e) => handleIntent('TRANSPORT_SEEK', { positionSeconds: parseFloat(e.target.value) })}
           />
         </div>
@@ -385,7 +590,7 @@ export const WubPad: React.FC = () => {
                 type="range" 
                 style={styles.slider} 
                 min="0" max="1" step="0.01" 
-                value={engineDiagnostics?.busLevels?.[`${stem.bus}_gain`] ?? 0.85} // Assuming gain feedback exists
+                value={getFiniteNumber(engineDiagnostics?.busLevels?.[`${stem.bus}_gain`], 0.85)} // Assuming gain feedback exists
                 onChange={(e) => handleIntent('STEM_GAIN', { stemId: stem.bus, value: parseFloat(e.target.value) })}
               />
               <button 
@@ -420,7 +625,7 @@ export const WubPad: React.FC = () => {
               onContextMenu={(e) => { e.preventDefault(); setLearningTarget(macro); }}
             >
               {macro.label}
-              {Object.keys(midiMappings).find(k => midiMappings[k].payload.macroId === macro.id) && (
+              {hasMidiMappingForMacro(midiMappings, macro.id) && (
                   <div style={{ position: 'absolute', top: 2, right: 4, fontSize: '0.5rem', color: COLORS.textMuted }}>MIDI</div>
               )}
             </button>
@@ -432,7 +637,7 @@ export const WubPad: React.FC = () => {
       <section style={styles.section}>
         <div style={styles.sectionTitle}>
             Scene Trigger
-            <span style={{ color: COLORS.primary }}>{engineDiagnostics?.currentScene || '---'}</span>
+            <span style={{ color: COLORS.primary }}>{currentScene}</span>
         </div>
         <div style={{ overflowX: 'auto', display: 'flex', gap: '0.5rem', paddingBottom: '0.5rem' }}>
           {DEFAULT_SCENES.map(scene => (
@@ -441,7 +646,7 @@ export const WubPad: React.FC = () => {
                 style={{ 
                     ...styles.button, 
                     minWidth: '100px',
-                    borderColor: engineDiagnostics?.currentScene === scene ? COLORS.primary : COLORS.border
+                    borderColor: currentScene === scene ? COLORS.primary : COLORS.border
                 }}
                 onClick={() => handleIntent('SCENE_TRIGGER', { sceneId: scene })}
                 onContextMenu={(e) => { e.preventDefault(); setLearningTarget({ id: `SCENE_${scene}`, label: scene }); }}
@@ -456,14 +661,15 @@ export const WubPad: React.FC = () => {
       <section style={{ ...styles.section, borderBottom: 'none', flex: 1 }}>
         <div style={styles.sectionTitle}>MIDI & Diagnostics</div>
         <div style={{ fontSize: '0.75rem', color: COLORS.textMuted }}>
+          <div>MIDI Status: {formatMidiStatus(midiStatus)}{midiError ? ` (${midiError})` : ''}</div>
           <div>MIDI Devices: {midiDevices.length > 0 ? midiDevices.join(', ') : 'None detected'}</div>
           {lastMidiEvent && <div style={{ marginTop: '0.25rem', color: COLORS.primary }}>
             LAST MIDI: {lastMidiEvent.status}, {lastMidiEvent.data1}, {lastMidiEvent.data2}
           </div>}
           <div style={{ marginTop: '0.5rem' }}>
-            BPM: {engineDiagnostics?.bpm?.toFixed(1) || '---'} | 
-            Pos: {engineDiagnostics?.currentBar || 1}.{engineDiagnostics?.currentBeat || 1} |
-            Phrase: {engineDiagnostics?.currentPhrase || 1}
+            BPM: {bpm === null ? '---' : bpm.toFixed(1)} | 
+            Pos: {currentBar || 1}.{currentBeat} |
+            Phrase: {currentPhrase}
           </div>
           {lastError && <div style={{ color: COLORS.danger, marginTop: '0.5rem' }}>Error: {lastError}</div>}
         </div>

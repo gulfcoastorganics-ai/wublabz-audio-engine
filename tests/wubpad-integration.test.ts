@@ -128,6 +128,32 @@ describe('WubWebSocketClient', () => {
     expect(sent.type).toBe('EMERGENCY_STOP');
   });
 
+  it('reports an error instead of throwing when WebSocket is unavailable', async () => {
+    const originalWebSocket = (globalThis as any).WebSocket;
+    let unavailableClient: any = null;
+
+    try {
+      vi.stubGlobal('WebSocket', undefined);
+
+      unavailableClient = new WubWebSocketClient({ url: 'ws://localhost:3001', autoConnect: false });
+      let status: string | null = null;
+      let error: string | null | undefined = null;
+
+      unavailableClient.onStatusChange((nextStatus: string, nextError?: string | null) => {
+        status = nextStatus;
+        error = nextError;
+      });
+
+      expect(() => unavailableClient.connect()).not.toThrow();
+      expect(status).toBe('error');
+      expect(error).toContain('WebSocket is unavailable');
+      expect(unavailableClient.send('HEARTBEAT', {})).toBe(false);
+    } finally {
+      unavailableClient?.disconnect();
+      vi.stubGlobal('WebSocket', originalWebSocket);
+    }
+  });
+
   it('notifies listeners of inbound ENGINE_STATUS with meter data', async () => {
     client.connect();
     const ws = MockWebSocket.instances[0];

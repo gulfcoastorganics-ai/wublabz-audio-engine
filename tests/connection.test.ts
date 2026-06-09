@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { getWubLabzHttpUrl, getWubLabzWsUrl } from '../src/wubpad-integration/env.js';
+import { getWubLabzHttpUrl, getWubLabzWsUrl, isMockMode } from '../src/wubpad-integration/env.js';
 
 describe('WubPad Integration Env', () => {
   it('should return default URLs when environment is missing', () => {
@@ -31,5 +31,17 @@ describe('WubPad Integration Env', () => {
     expect(getWubLabzHttpUrl()).toBe('https://api.wub.ai');
     expect(getWubLabzWsUrl()).toBe('wss://ws.wub.ai');
   });
-});
 
+  it('does not require process global for mock mode checks', () => {
+    const originalProcess = globalThis.process;
+
+    try {
+      vi.stubGlobal('process', undefined);
+
+      expect(() => isMockMode()).not.toThrow();
+      expect(isMockMode()).toBe(false);
+    } finally {
+      vi.stubGlobal('process', originalProcess);
+    }
+  });
+});

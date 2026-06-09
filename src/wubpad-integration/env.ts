@@ -4,13 +4,14 @@
  */
 
 export const getWubLabzHttpUrl = () => {
-  const meta = import.meta as any;
-  if (meta.env?.VITE_WUBLABZ_HTTP_URL) {
-    return meta.env.VITE_WUBLABZ_HTTP_URL;
+  const importMetaEnv = getImportMetaEnv();
+  if (importMetaEnv?.VITE_WUBLABZ_HTTP_URL) {
+    return importMetaEnv.VITE_WUBLABZ_HTTP_URL;
   }
   
-  if (typeof process !== 'undefined' && process.env?.VITE_WUBLABZ_HTTP_URL) {
-    return process.env.VITE_WUBLABZ_HTTP_URL;
+  const processEnv = getProcessEnv();
+  if (processEnv?.VITE_WUBLABZ_HTTP_URL) {
+    return processEnv.VITE_WUBLABZ_HTTP_URL;
   }
   
   // Fallback to same host, port 3001
@@ -24,13 +25,14 @@ export const getWubLabzHttpUrl = () => {
 };
 
 export const getWubLabzWsUrl = () => {
-  const meta = import.meta as any;
-  if (meta.env?.VITE_WUBLABZ_WS_URL) {
-    return meta.env.VITE_WUBLABZ_WS_URL;
+  const importMetaEnv = getImportMetaEnv();
+  if (importMetaEnv?.VITE_WUBLABZ_WS_URL) {
+    return importMetaEnv.VITE_WUBLABZ_WS_URL;
   }
   
-  if (typeof process !== 'undefined' && process.env?.VITE_WUBLABZ_WS_URL) {
-    return process.env.VITE_WUBLABZ_WS_URL;
+  const processEnv = getProcessEnv();
+  if (processEnv?.VITE_WUBLABZ_WS_URL) {
+    return processEnv.VITE_WUBLABZ_WS_URL;
   }
   
   // Fallback to same host, port 3001
@@ -45,8 +47,17 @@ export const getWubLabzWsUrl = () => {
 };
 
 export const isMockMode = () => {
-  const meta = import.meta as any;
-  return meta.env?.VITE_WUBLABZ_MOCK === 'true' || process.env?.VITE_WUBLABZ_MOCK === 'true';
+  return getImportMetaEnv()?.VITE_WUBLABZ_MOCK === 'true' || getProcessEnv()?.VITE_WUBLABZ_MOCK === 'true';
 };
 
+function getImportMetaEnv(): Record<string, string | undefined> | undefined {
+  try {
+    return (import.meta as any).env;
+  } catch {
+    return undefined;
+  }
+}
 
+function getProcessEnv(): NodeJS.ProcessEnv | undefined {
+  return typeof process !== 'undefined' ? process.env : undefined;
+}

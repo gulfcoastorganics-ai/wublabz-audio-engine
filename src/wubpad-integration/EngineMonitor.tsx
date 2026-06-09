@@ -12,37 +12,52 @@ export const EngineMonitor: React.FC = () => {
   const [diagnostics, setDiagnostics] = useState<any>(null);
 
   useEffect(() => {
-    const client = new WubWebSocketClient();
+    let client: WubWebSocketClient | null = null;
+    let unbindStatus: () => void = () => undefined;
+    let unbindEvent: () => void = () => undefined;
+
+    try {
+      client = new WubWebSocketClient();
     
-    const unbindStatus = client.onStatusChange((s, err) => {
-      setStatus(s);
-      if (s === 'connected') setLastError(null);
-      if (err) setLastError(err);
-    });
+      unbindStatus = client.onStatusChange((s, err) => {
+        setStatus(s);
+        if (s === 'connected') setLastError(null);
+        if (err) setLastError(err);
+      });
 
-    const unbindEvent = client.onEvent((event) => {
-      if (event.type === 'ENGINE_STATUS') {
-        setEngineReady(event.payload.engineReady);
-        setEmergencyStopped(event.payload.emergencyStopped);
-        setDiagnostics(event.payload);
-      }
-      if (event.type === 'HEARTBEAT') {
-        setLatency(client.getLatency());
-      }
-    });
+      unbindEvent = client.onEvent((event) => {
+        if (event.type === 'ENGINE_STATUS') {
+          setEngineReady(Boolean(event.payload?.engineReady));
+          setEmergencyStopped(Boolean(event.payload?.emergencyStopped));
+          setDiagnostics(event.payload ?? null);
+        }
+        if (event.type === 'HEARTBEAT') {
+          setLatency(client?.getLatency() ?? 0);
+        }
+      });
 
-    client.connect();
+      client.connect();
+    } catch (err) {
+      setStatus('error');
+      setLastError(`WebSocket setup failed: ${toErrorMessage(err)}`);
+    }
 
     // Check health endpoint
     const checkHealth = async () => {
+      if (typeof fetch !== 'function') {
+        setHealth({ ok: false, error: 'Fetch API is unavailable' });
+        setLastError('HTTP Connection Failed: Fetch API is unavailable');
+        return;
+      }
+
       try {
         const resp = await fetch(`${getWubLabzHttpUrl()}/health`);
         const data = await resp.json();
         setHealth(data);
-        if (data.ok) setLastError(null);
+        if (isHealthOk(data)) setLastError(null);
       } catch (err: any) {
-        setHealth({ ok: false, error: err.message });
-        setLastError(`HTTP Connection Failed: ${err.message}`);
+        setHealth({ ok: false, error: toErrorMessage(err) });
+        setLastError(`HTTP Connection Failed: ${toErrorMessage(err)}`);
       }
     };
 
@@ -52,10 +67,13 @@ export const EngineMonitor: React.FC = () => {
     return () => {
       unbindStatus();
       unbindEvent();
-      client.disconnect();
+      client?.disconnect();
       clearInterval(interval);
     };
   }, []);
+
+  const healthOk = isHealthOk(health);
+  const healthLabel = health ? (healthOk ? 'OK' : 'FAILED') : 'CHECKING';
 
   return (
     <div style={{
@@ -69,7 +87,7 @@ export const EngineMonitor: React.FC = () => {
       <h3 style={{ margin: '0 0 1rem 0' }}>Engine Monitor {isMockMode() && <span style={{ color: 'orange' }}>(MOCK MODE)</span>}</h3>
       
       <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: '0.5rem' }}>
-        <strong>Frontend URL:</strong> <span>{typeof window !== 'undefined' ? window.location.href : 'N/A'}</span>
+        <strong>Frontend URL:</strong> <span>{getCurrentHref()}</span>
         <strong>HTTP URL:</strong> <span>{getWubLabzHttpUrl()}</span>
         <strong>WS URL:</strong> <span>{getWubLabzWsUrl()}</span>
         
@@ -79,15 +97,15 @@ export const EngineMonitor: React.FC = () => {
         </span>
 
         <strong>Health Check:</strong>
-        <span style={{ color: health?.ok ? 'green' : 'red' }}>
-          {health?.ok ? 'OK' : 'FAILED'}
+        <span style={{ color: healthOk ? 'green' : health ? 'red' : '#777' }}>
+          {healthLabel}
         </span>
 
         <strong>Latency:</strong> <span>{latency}ms</span>
         <strong>Engine Ready:</strong> <span>{engineReady ? 'YES' : 'NO'}</span>
-        <strong>Connections:</strong> <span>{diagnostics?.activeConnectionCount || 0}</span>
-        <strong>Transport:</strong> <span>{diagnostics?.transportState?.toUpperCase() || 'STOPPED'}</span>
-        <strong>Scene:</strong> <span>{diagnostics?.currentScene || '---'}</span>
+        <strong>Connections:</strong> <span>{getFiniteNumber(diagnostics?.activeConnectionCount, 0)}</span>
+        <strong>Transport:</strong> <span>{formatUpper(diagnostics?.transportState, 'STOPPED')}</span>
+        <strong>Scene:</strong> <span>{getString(diagnostics?.currentScene, '---')}</span>
         <strong>E-Stop:</strong> <span style={{ color: emergencyStopped ? 'red' : 'inherit' }}>{emergencyStopped ? 'STOPPED' : 'CLEAR'}</span>
       </div>
 
@@ -112,3 +130,31 @@ export const EngineMonitor: React.FC = () => {
     </div>
   );
 };
+
+function isHealthOk(health: any): boolean {
+  return health?.status === 'ok' || health?.ok === true;
+}
+
+function getCurrentHref(): string {
+  try {
+    return (globalThis as { location?: { href?: string } }).location?.href ?? 'N/A';
+  } catch {
+    return 'N/A';
+  }
+}
+
+function toErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function getFiniteNumber(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function getString(value: unknown, fallback: string): string {
+  return typeof value === 'string' && value.length > 0 ? value : fallback;
+}
+
+function formatUpper(value: unknown, fallback: string): string {
+  return typeof value === 'string' && value.length > 0 ? value.toUpperCase() : fallback;
+}
