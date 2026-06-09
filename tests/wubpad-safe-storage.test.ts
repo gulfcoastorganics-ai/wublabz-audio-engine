@@ -24,7 +24,7 @@ describe('WubPad safe storage helpers', () => {
   it('falls back when stored JSON is corrupt or has the wrong shape', () => {
     const store = new Map<string, string>([
       ['corrupt', '{bad-json'],
-      ['wrong-shape', '{"url":"ws://localhost:3001"}']
+      ['wrong-shape', '{"url":"ws://127.0.0.1:3001"}']
     ]);
 
     vi.stubGlobal('localStorage', createStorageStub(store));
@@ -38,8 +38,8 @@ describe('WubPad safe storage helpers', () => {
 
     vi.stubGlobal('localStorage', createStorageStub(store));
 
-    expect(writeStorageJson('history', ['ws://localhost:3001'])).toBe(true);
-    expect(readStorageJson('history', [] as string[], isStringArray)).toEqual(['ws://localhost:3001']);
+    expect(writeStorageJson('history', ['ws://127.0.0.1:3001'])).toBe(true);
+    expect(readStorageJson('history', [] as string[], isStringArray)).toEqual(['ws://127.0.0.1:3001']);
   });
 });
 

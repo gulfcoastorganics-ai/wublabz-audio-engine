@@ -1,48 +1,62 @@
 import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
 import { randomUUID } from 'node:crypto';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { RuntimeController } from './runtimeController.js';
 import { parseAndValidateInboundEvent } from './protocol.js';
-
-const PORT = 3001;
+import {
+  createHealthResponse,
+  findPortOwner,
+  formatPortInUseDiagnostics,
+  formatStartupDiagnostics,
+  isAddressInUseError,
+  probeExistingWubLabz,
+  resolveWubLabzPort
+} from './startup.js';
 
 type ServerResponse = {
   type: string;
   payload?: unknown;
 };
 
-async function startServer() {
-  const server = Fastify({ logger: true });
+const WS_OPEN = 1;
 
+export type WubLabzServerStartResult = 'started' | 'already-running' | 'port-in-use';
+
+export interface WubLabzServerOptions {
+  logger?: boolean;
+  now?: () => number;
+  startedAtMs?: number;
+}
+
+export async function createWubLabzServer(options: WubLabzServerOptions = {}) {
+  const server = Fastify({ logger: options.logger ?? true });
   await server.register(websocket);
 
   const runtimeController = new RuntimeController();
   runtimeController.initializeRuntime();
+  const startedAtMs = options.startedAtMs ?? Date.now();
+  const now = options.now ?? Date.now;
 
   let activeConnections = 0;
 
-  // Health check endpoint
   server.get('/health', async () => {
-    return {
-      ok: true,
-      service: 'wublabz',
-      engineReady: runtimeController.getRuntimeDiagnostics().engineReady,
-      wsPath: '/',
-      timestamp: Date.now(),
-      connections: activeConnections
-    };
+    return createHealthResponse(startedAtMs, now());
   });
 
   // WebSocket connection handler
-  server.get('/', { websocket: true }, (connection, req) => {
+  server.get('/', { websocket: true }, (socket, req) => {
     activeConnections++;
     runtimeController.setActiveConnectionCount(activeConnections);
     const clientId = randomUUID();
-    server.log.info(`Client connected: ${clientId}`);
+    const remoteAddress = req.socket?.remoteAddress ?? req.ip ?? 'unknown';
+    console.info(`Client connected: ${clientId} (${remoteAddress})`);
+    server.log.info({ clientId, remoteAddress }, 'Client connected');
 
     const sendResponse = (response: ServerResponse) => {
-      if (connection.socket.readyState !== 1) return;
-      connection.socket.send(JSON.stringify({
+      if (socket.readyState !== WS_OPEN) return;
+      socket.send(JSON.stringify({
         clientId,
         timestamp: Date.now(),
         source: 'wublabz-server',
@@ -64,7 +78,9 @@ async function startServer() {
       payload: runtimeController.getRuntimeDiagnostics()
     });
 
-    connection.socket.on('message', (message: unknown) => {
+    socket.on('message', (message: unknown) => {
+      console.info(`Message received: ${clientId}`);
+      server.log.info({ clientId }, 'Message received');
       const validation = parseAndValidateInboundEvent(toMessageText(message));
 
       if (!validation.success) {
@@ -87,41 +103,59 @@ async function startServer() {
       }
     });
 
-    connection.socket.on('close', () => {
+    socket.on('close', () => {
       activeConnections--;
       runtimeController.setActiveConnectionCount(activeConnections);
-      server.log.info(`Client disconnected: ${clientId}`);
+      console.info(`Client disconnected: ${clientId}`);
+      server.log.info({ clientId }, 'Client disconnected');
       clearInterval(telemetryInterval);
     });
 
-    connection.socket.on('error', () => {
+    socket.on('error', () => {
         clearInterval(telemetryInterval);
     });
   });
 
-  try {
-    const address = await server.listen({ port: PORT, host: '0.0.0.0' });
-    console.log(`
---- WUBLABZ ENGINE STARTED ---
-Server URL: ${address}
-WebSocket URL: ws://localhost:${PORT}/
-Health Check: ${address}/health
-Mode: ${isMockMode() ? 'MOCK' : 'LIVE'}
+  return server;
+}
 
-WubPad Connection: 
-Open WubPad UI and set Engine URL to: ws://localhost:${PORT}/
-------------------------------
-`);
+export async function startServer(): Promise<WubLabzServerStartResult> {
+  const port = resolveWubLabzPort();
+
+  if (await probeExistingWubLabz(port)) {
+    console.log(`WubLabz already running on port ${port}`);
+    return 'already-running';
+  }
+
+  const server = await createWubLabzServer();
+
+  try {
+    await server.listen({ port, host: '0.0.0.0' });
+    console.log(formatStartupDiagnostics(port));
+    return 'started';
   } catch (err) {
-    server.log.error(err);
-    process.exit(1);
+    await server.close().catch(() => undefined);
+
+    if (isAddressInUseError(err)) {
+      if (await probeExistingWubLabz(port)) {
+        console.log(`WubLabz already running on port ${port}`);
+        return 'already-running';
+      }
+
+      console.error(formatPortInUseDiagnostics(port, await findPortOwner(port)));
+      return 'port-in-use';
+    }
+
+    throw err;
   }
 }
 
-startServer();
-
-// Re-import isMockMode for logging
-import { isMockMode } from '../wubpad-integration/env.js';
+if (isMainModule()) {
+  startServer().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
 
 function toMessageText(message: unknown): string {
   if (typeof message === 'string') {
@@ -141,4 +175,11 @@ function toMessageText(message: unknown): string {
   }
 
   return String(message);
+}
+
+function isMainModule(): boolean {
+  const entry = process.argv[1];
+  if (!entry) return false;
+
+  return fileURLToPath(import.meta.url) === path.resolve(entry);
 }

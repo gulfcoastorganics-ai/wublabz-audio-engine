@@ -49,7 +49,7 @@ describe('WubWebSocketClient', () => {
     MockWebSocket.instances = [];
     const mod = await import('../src/wubpad-integration/WebSocketClient.js');
     WubWebSocketClient = mod.WubWebSocketClient;
-    client = new WubWebSocketClient({ url: 'ws://localhost:3001', autoConnect: false });
+    client = new WubWebSocketClient({ url: 'ws://127.0.0.1:3001', autoConnect: false });
   });
 
   afterEach(() => {
@@ -88,6 +88,16 @@ describe('WubWebSocketClient', () => {
     
     MockWebSocket.instances[1].triggerOpen();
     expect(client.getStatus()).toBe('connected');
+  });
+
+  it('captures close code and reason on disconnect', async () => {
+    client.connect();
+    const ws = MockWebSocket.instances[0];
+    ws.triggerOpen();
+
+    ws.triggerClose(false, 1006);
+    expect(client.getLastCloseCode()).toBe(1006);
+    expect(client.getStatus()).toBe('error');
   });
 
   it('sends validated protocol events', async () => {
@@ -135,7 +145,7 @@ describe('WubWebSocketClient', () => {
     try {
       vi.stubGlobal('WebSocket', undefined);
 
-      unavailableClient = new WubWebSocketClient({ url: 'ws://localhost:3001', autoConnect: false });
+      unavailableClient = new WubWebSocketClient({ url: 'ws://127.0.0.1:3001', autoConnect: false });
       let status: string | null = null;
       let error: string | null | undefined = null;
 

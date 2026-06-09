@@ -15,6 +15,8 @@ export class WubWebSocketClient {
   private reconnectDelay = 1000;
   private status: WubConnectionStatus = 'idle';
   private lastError: string | null = null;
+  private lastCloseCode: number | null = null;
+  private lastCloseReason: string | null = null;
   private eventListeners: Set<(event: ValidatedWubLabzEvent) => void> = new Set();
   private statusListeners: Set<(status: WubConnectionStatus, error?: string | null) => void> = new Set();
   private latency = 0;
@@ -52,6 +54,8 @@ export class WubWebSocketClient {
     this.ws.onopen = () => {
       this.reconnectDelay = 1000;
       this.lastError = null;
+      this.lastCloseCode = null;
+      this.lastCloseReason = null;
       this.setStatus('connected');
       this.startHeartbeat();
     };
@@ -77,15 +81,18 @@ export class WubWebSocketClient {
 
     this.ws.onclose = (event) => {
       const wasConnected = this.status === 'connected';
+      const wasAttempting = this.status === 'connecting' || this.status === 'reconnecting';
+      this.lastCloseCode = event.code;
+      this.lastCloseReason = event.reason;
       this.cleanup();
       
       if (!event.wasClean) {
-        this.handleError(`Connection lost (code: ${event.code})`);
+        this.handleError(`Connection lost (code: ${event.code}, reason: ${event.reason || 'none'})`);
       } else {
         this.setStatus('disconnected');
       }
       
-      if (wasConnected || this.status === 'reconnecting' || this.status === 'connecting') {
+      if (wasConnected || wasAttempting || this.status === 'error') {
         this.scheduleReconnect();
       }
     };
@@ -93,6 +100,11 @@ export class WubWebSocketClient {
     this.ws.onerror = (err) => {
       this.handleError('WebSocket error occurred');
     };
+  }
+
+  reconnect() {
+    this.disconnect();
+    this.connect();
   }
 
   private handleError(message: string) {
@@ -174,6 +186,18 @@ export class WubWebSocketClient {
     return this.lastError;
   }
 
+  getLastCloseCode(): number | null {
+    return this.lastCloseCode;
+  }
+
+  getLastCloseReason(): string | null {
+    return this.lastCloseReason;
+  }
+
+  getUrl(): string {
+    return this.url;
+  }
+
   getLatency() {
     return this.latency;
   }
@@ -182,8 +206,18 @@ export class WubWebSocketClient {
     this.cleanupReconnect();
     this.cleanup();
     if (this.ws) {
-      this.ws.onclose = null; // Prevent auto-reconnect
-      this.ws.close();
+      this.ws.onopen = null;
+      this.ws.onmessage = null;
+      this.ws.onerror = null;
+      this.ws.onclose = null;
+      
+      try {
+        if (this.ws.readyState !== 3 /* CLOSED */) {
+            this.ws.close();
+        }
+      } catch (err) {
+        // Ignore close errors
+      }
       this.ws = null;
     }
     this.setStatus('disconnected');

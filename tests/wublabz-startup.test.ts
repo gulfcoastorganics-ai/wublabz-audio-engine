@@ -51,6 +51,40 @@ describe('WubLabz startup diagnostics', () => {
     }
   });
 
+  it('accepts WebSocket clients and WubPad heartbeat messages', async () => {
+    const server = await createWubLabzServer({ logger: false });
+
+    try {
+      await server.ready();
+
+      const ws = await server.injectWS('/');
+      const messages: any[] = [];
+      const nextMessage = waitForMessage(messages, ws);
+
+      const initialMessage = await nextMessage();
+      expect(initialMessage.type).toBe('ENGINE_STATUS');
+      expect(initialMessage.source).toBe('wublabz-server');
+
+      ws.send(JSON.stringify({
+        clientId: 'test-wubpad',
+        timestamp: Date.now(),
+        source: 'wubpad',
+        type: 'HEARTBEAT',
+        payload: { clientSent: 123 }
+      }));
+
+      const heartbeat = await nextMessage((message) => message.type === 'HEARTBEAT');
+      expect(heartbeat.payload).toMatchObject({
+        clientSent: 123,
+        serverReceived: expect.any(Number)
+      });
+
+      ws.terminate();
+    } finally {
+      await server.close();
+    }
+  });
+
   it('detects current and legacy WubLabz health payloads', async () => {
     expect(isWubLabzHealthPayload({ status: 'ok', version: WUBLABZ_VERSION, uptimeSeconds: 1 })).toBe(true);
     expect(isWubLabzHealthPayload({ ok: true, service: 'wublabz' })).toBe(true);
@@ -88,7 +122,8 @@ node    12345 user   19u  IPv4 12345      0t0  TCP *:3001 (LISTEN)`)
 
   it('prints actionable startup and occupied-port diagnostics', () => {
     expect(formatStartupDiagnostics(3001)).toContain('WubLabz Engine Started');
-    expect(formatStartupDiagnostics(3001)).toContain('Health: http://localhost:3001/health');
+    expect(formatStartupDiagnostics(3001)).toContain('WebSocket server listening: ws://127.0.0.1:3001');
+    expect(formatStartupDiagnostics(3001)).toContain('Health: http://127.0.0.1:3001/health');
 
     const message = formatPortInUseDiagnostics(3001, { pid: 12345, command: 'node', source: 'lsof' });
 
@@ -98,3 +133,32 @@ node    12345 user   19u  IPv4 12345      0t0  TCP *:3001 (LISTEN)`)
     expect(message).toContain('PORT=3002 npm run wublabz');
   });
 });
+
+function waitForMessage(messages: any[], ws: { on: (event: 'message', listener: (data: unknown) => void) => void }) {
+  ws.on('message', (data: unknown) => {
+    messages.push(JSON.parse(dataToString(data)));
+  });
+
+  return (predicate: (message: any) => boolean = () => true): Promise<any> => {
+    const existing = messages.find(predicate);
+    if (existing) return Promise.resolve(existing);
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Timed out waiting for WebSocket message'));
+      }, 1000);
+
+      ws.on('message', (data: unknown) => {
+        const message = JSON.parse(dataToString(data));
+        if (predicate(message)) {
+          clearTimeout(timeout);
+          resolve(message);
+        }
+      });
+    });
+  };
+}
+
+function dataToString(data: unknown): string {
+  return Buffer.isBuffer(data) ? data.toString('utf8') : String(data);
+}

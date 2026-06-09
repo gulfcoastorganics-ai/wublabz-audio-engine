@@ -8,8 +8,8 @@ describe('WubPad Integration Env', () => {
     delete process.env.VITE_WUBLABZ_HTTP_URL;
     delete process.env.VITE_WUBLABZ_WS_URL;
 
-    expect(getWubLabzHttpUrl()).toBe('http://localhost:3001');
-    expect(getWubLabzWsUrl()).toBe('ws://localhost:3001');
+    expect(getWubLabzHttpUrl()).toBe('http://127.0.0.1:3001');
+    expect(getWubLabzWsUrl()).toBe('ws://127.0.0.1:3001');
   });
 
   it('should derive URLs from window.location when possible', () => {

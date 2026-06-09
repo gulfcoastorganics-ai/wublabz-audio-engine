@@ -18,10 +18,11 @@ export const getWubLabzHttpUrl = () => {
   const win = (globalThis as any).window;
   if (typeof win !== 'undefined') {
     const { protocol, hostname } = win.location;
-    return `${protocol}//${hostname}:3001`;
+    const resolvedHost = hostname === 'localhost' ? '127.0.0.1' : hostname;
+    return `${protocol}//${resolvedHost}:3001`;
   }
   
-  return 'http://localhost:3001';
+  return 'http://127.0.0.1:3001';
 };
 
 export const getWubLabzWsUrl = () => {
@@ -40,10 +41,11 @@ export const getWubLabzWsUrl = () => {
   if (typeof win !== 'undefined') {
     const { hostname } = win.location;
     const protocol = win.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${protocol}//${hostname}:3001`;
+    const resolvedHost = hostname === 'localhost' ? '127.0.0.1' : hostname;
+    return `${protocol}//${resolvedHost}:3001`;
   }
   
-  return 'ws://localhost:3001';
+  return 'ws://127.0.0.1:3001';
 };
 
 export const isMockMode = () => {

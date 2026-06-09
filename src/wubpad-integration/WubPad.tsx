@@ -126,6 +126,24 @@ const styles: Record<string, React.CSSProperties> = {
   activeButton: { backgroundColor: COLORS.primary, color: COLORS.bg },
   slider: { width: '100%', accentColor: COLORS.primary, margin: '0.5rem 0' },
   statusIndicator: { width: '8px', height: '8px', borderRadius: '50%', marginRight: '0.5rem', display: 'inline-block' },
+  connectionPanel: {
+    padding: '0.75rem 1rem',
+    borderBottom: `1px solid ${COLORS.border}`,
+    backgroundColor: '#101010',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '0.75rem',
+    flexWrap: 'wrap',
+    fontSize: '0.75rem'
+  },
+  connectionBadge: {
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: '4px',
+    padding: '0.35rem 0.5rem',
+    fontWeight: 800,
+    letterSpacing: '0.04em'
+  },
   meter: { height: '4px', backgroundColor: '#222', borderRadius: '2px', overflow: 'hidden', marginTop: '2px' },
   meterFill: { height: '100%', backgroundColor: COLORS.meter, transition: 'width 0.05s ease-out' },
   input: {
@@ -262,14 +280,47 @@ function formatMidiStatus(status: MidiStatus): string {
   }
 }
 
+function formatConnectionStatus(status: WubConnectionStatus): 'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR' {
+  switch (status) {
+    case 'connected':
+      return 'CONNECTED';
+    case 'connecting':
+    case 'reconnecting':
+      return 'CONNECTING';
+    case 'error':
+      return 'ERROR';
+    case 'idle':
+    case 'disconnected':
+    default:
+      return 'DISCONNECTED';
+  }
+}
+
 export const WubPad: React.FC = () => {
   // --- Connection State ---
-  const [wsUrl, setWsUrl] = useState(() => readStorageValue(STORAGE_KEYS.WS_URL) || getWubLabzWsUrl());
-  const [urlHistory, setUrlHistory] = useState<string[]>(() =>
-    readStorageJson(STORAGE_KEYS.URL_HISTORY, [], isStringArray)
-  );
+  const [wsUrl, setWsUrl] = useState(() => {
+    const raw = readStorageValue(STORAGE_KEYS.WS_URL) || getWubLabzWsUrl();
+    if (raw.includes('localhost')) {
+        const migrated = raw.replace('localhost', '127.0.0.1');
+        writeStorageValue(STORAGE_KEYS.WS_URL, migrated);
+        return migrated;
+    }
+    return raw;
+  });
+
+  const [urlHistory, setUrlHistory] = useState<string[]>(() => {
+    const raw = readStorageJson(STORAGE_KEYS.URL_HISTORY, [], isStringArray);
+    if (raw.some(u => u.includes('localhost'))) {
+        const migrated = raw.map(u => u.replace('localhost', '127.0.0.1'));
+        writeStorageJson(STORAGE_KEYS.URL_HISTORY, migrated);
+        return migrated;
+    }
+    return raw;
+  });
+
   const [status, setStatus] = useState<WubConnectionStatus>('idle');
   const [lastError, setLastError] = useState<string | null>(null);
+  const [closeDetails, setCloseDetails] = useState<{ code: number | null, reason: string | null } | null>(null);
   const [latency, setLatency] = useState(0);
   const [engineDiagnostics, setEngineDiagnostics] = useState<any>(null);
 
@@ -293,6 +344,23 @@ export const WubPad: React.FC = () => {
   const handleIntentRef = useRef<((type: string, payload?: any, force?: boolean) => void) | null>(null);
 
   // --- Handlers ---
+  const clearPairing = useCallback(() => {
+    if (confirmAction('Clear saved connection settings and reset to defaults?')) {
+        removeStorageValue(STORAGE_KEYS.WS_URL);
+        removeStorageValue(STORAGE_KEYS.URL_HISTORY);
+        const defaultUrl = getWubLabzWsUrl();
+        setWsUrl(defaultUrl);
+        setUrlHistory([]);
+        
+        if (clientRef.current) {
+            clientRef.current.disconnect();
+            setStatus('idle');
+            setLastError(null);
+            setCloseDetails(null);
+        }
+    }
+  }, []);
+
   const connect = useCallback((targetUrl?: string) => {
     const url = targetUrl || wsUrl;
     if (clientRef.current) {
@@ -309,8 +377,17 @@ export const WubPad: React.FC = () => {
     
     clientRef.current.onStatusChange((s, err) => {
       setStatus(s);
-      if (s === 'connected') setLastError(null);
-      if (err) setLastError(err);
+      if (s === 'connected') {
+        setLastError(null);
+        setCloseDetails(null);
+      }
+      if (err) {
+        setLastError(err);
+        setCloseDetails({
+          code: clientRef.current?.getLastCloseCode() ?? null,
+          reason: clientRef.current?.getLastCloseReason() ?? null
+        });
+      }
       if (s === 'connected') {
         writeStorageValue(STORAGE_KEYS.WS_URL, url);
         setUrlHistory(prev => {
@@ -488,6 +565,7 @@ export const WubPad: React.FC = () => {
   const currentBeat = getFiniteNumber(engineDiagnostics?.currentBeat, 1);
   const currentPhrase = getFiniteNumber(engineDiagnostics?.currentPhrase, 1);
   const bpm = getOptionalFiniteNumber(engineDiagnostics?.bpm);
+  const connectionStatus = formatConnectionStatus(status);
 
   return (
     <div style={styles.container}>
@@ -514,9 +592,22 @@ export const WubPad: React.FC = () => {
         </div>
       </header>
 
+      <section style={styles.connectionPanel} aria-live="polite">
+        <div>
+          <div style={{ color: COLORS.textMuted, marginBottom: '0.2rem' }}>CONNECTION</div>
+          <div style={{ color: COLORS.text }}>{wsUrl}</div>
+        </div>
+        <div style={{ ...styles.connectionBadge, color: getStatusColor(), borderColor: getStatusColor() }}>
+          {connectionStatus}
+        </div>
+      </section>
+
       {showSettings && (
         <section style={{ ...styles.section, backgroundColor: COLORS.surface }}>
-            <div style={styles.sectionTitle}>Pairing & URLs</div>
+            <div style={styles.sectionTitle}>
+                Pairing & URLs
+                <span style={{ color: COLORS.primary, cursor: 'pointer', fontSize: '0.65rem' }} onClick={clearPairing}>RESET PAIRING</span>
+            </div>
             <div style={{ marginBottom: '1rem' }}>
                 <input 
                     style={styles.input} 
@@ -671,7 +762,20 @@ export const WubPad: React.FC = () => {
             Pos: {currentBar || 1}.{currentBeat} |
             Phrase: {currentPhrase}
           </div>
-          {lastError && <div style={{ color: COLORS.danger, marginTop: '0.5rem' }}>Error: {lastError}</div>}
+          {lastError && (
+            <div style={{ color: COLORS.danger, marginTop: '0.5rem', borderTop: `1px solid ${COLORS.border}`, paddingTop: '0.5rem' }}>
+              <div style={{ fontWeight: 'bold' }}>Error: {lastError}</div>
+              <div style={{ fontSize: '0.65rem', opacity: 0.8, marginTop: '0.2rem' }}>URL: {wsUrl}</div>
+              {closeDetails && (closeDetails.code !== null || closeDetails.reason) && (
+                <div style={{ fontSize: '0.65rem', opacity: 0.8 }}>
+                  Code: {closeDetails.code ?? 'unknown'} | Reason: {closeDetails.reason || 'none'}
+                </div>
+              )}
+              <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: COLORS.text }}>
+                💡 Try <strong>ws://127.0.0.1:3001</strong> and confirm <strong>http://127.0.0.1:3001/health</strong> works.
+              </div>
+            </div>
+          )}
         </div>
       </section>
     </div>
