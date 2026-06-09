@@ -280,7 +280,7 @@ function formatMidiStatus(status: MidiStatus): string {
   }
 }
 
-function formatConnectionStatus(status: WubConnectionStatus): 'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR' {
+function formatConnectionStatus(status: WubConnectionStatus): 'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR' | 'TRIPPED' {
   switch (status) {
     case 'connected':
       return 'CONNECTED';
@@ -289,6 +289,8 @@ function formatConnectionStatus(status: WubConnectionStatus): 'CONNECTING' | 'CO
       return 'CONNECTING';
     case 'error':
       return 'ERROR';
+    case 'tripped':
+      return 'TRIPPED';
     case 'idle':
     case 'disconnected':
     default:
@@ -323,6 +325,7 @@ export const WubPad: React.FC = () => {
   const [closeDetails, setCloseDetails] = useState<{ code: number | null, reason: string | null } | null>(null);
   const [latency, setLatency] = useState(0);
   const [engineDiagnostics, setEngineDiagnostics] = useState<any>(null);
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
 
   // --- MIDI State ---
   const [midiDevices, setMidiDevices] = useState<string[]>([]);
@@ -354,10 +357,12 @@ export const WubPad: React.FC = () => {
         
         if (clientRef.current) {
             clientRef.current.disconnect();
-            setStatus('idle');
-            setLastError(null);
-            setCloseDetails(null);
+            clientRef.current = null;
         }
+        setStatus('idle');
+        setLastError(null);
+        setCloseDetails(null);
+        setReconnectAttempts(0);
     }
   }, []);
 
@@ -377,6 +382,7 @@ export const WubPad: React.FC = () => {
     
     clientRef.current.onStatusChange((s, err) => {
       setStatus(s);
+      setReconnectAttempts(clientRef.current?.getReconnectAttempts() ?? 0);
       if (s === 'connected') {
         setLastError(null);
         setCloseDetails(null);
@@ -409,6 +415,14 @@ export const WubPad: React.FC = () => {
 
     clientRef.current.connect();
   }, [wsUrl]);
+
+  const resetCircuitBreaker = useCallback(() => {
+    if (clientRef.current) {
+        clientRef.current.resetCircuitBreaker();
+    } else {
+        connect();
+    }
+  }, [connect]);
 
   const handleIntent = useCallback((type: string, payload: any = {}, force: boolean = false) => {
     if (confirmationsEnabled && !force) {
@@ -548,6 +562,7 @@ export const WubPad: React.FC = () => {
       case 'connecting':
       case 'reconnecting': return 'orange';
       case 'error': return 'red';
+      case 'tripped': return '#ff3333';
       default: return '#555';
     }
   };
@@ -597,8 +612,18 @@ export const WubPad: React.FC = () => {
           <div style={{ color: COLORS.textMuted, marginBottom: '0.2rem' }}>CONNECTION</div>
           <div style={{ color: COLORS.text }}>{wsUrl}</div>
         </div>
-        <div style={{ ...styles.connectionBadge, color: getStatusColor(), borderColor: getStatusColor() }}>
-          {connectionStatus}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            {status === 'tripped' && (
+                <button 
+                    style={{ ...styles.button, padding: '0.35rem 0.5rem', fontSize: '0.7rem', borderColor: COLORS.primary, color: COLORS.primary }}
+                    onClick={resetCircuitBreaker}
+                >
+                    RETRY
+                </button>
+            )}
+            <div style={{ ...styles.connectionBadge, color: getStatusColor(), borderColor: getStatusColor() }}>
+                {connectionStatus}
+            </div>
         </div>
       </section>
 
@@ -760,9 +785,22 @@ export const WubPad: React.FC = () => {
           <div style={{ marginTop: '0.5rem' }}>
             BPM: {bpm === null ? '---' : bpm.toFixed(1)} | 
             Pos: {currentBar || 1}.{currentBeat} |
-            Phrase: {currentPhrase}
+            Phrase: {currentPhrase} |
+            Attempts: {reconnectAttempts}
           </div>
-          {lastError && (
+          {status === 'tripped' && (
+            <div style={{ color: COLORS.danger, marginTop: '0.5rem', borderTop: `1px solid ${COLORS.border}`, paddingTop: '0.5rem' }}>
+                <div style={{ fontWeight: 'bold' }}>Circuit Breaker Tripped</div>
+                <div style={{ fontSize: '0.75rem', marginTop: '0.2rem' }}>Too many failed connection attempts. Please check if WubLabz is running and click RETRY.</div>
+                <button 
+                    style={{ ...styles.button, width: '100%', marginTop: '0.75rem', backgroundColor: COLORS.primary, color: COLORS.bg }}
+                    onClick={resetCircuitBreaker}
+                >
+                    RESET & RETRY CONNECTION
+                </button>
+            </div>
+          )}
+          {lastError && status !== 'tripped' && (
             <div style={{ color: COLORS.danger, marginTop: '0.5rem', borderTop: `1px solid ${COLORS.border}`, paddingTop: '0.5rem' }}>
               <div style={{ fontWeight: 'bold' }}>Error: {lastError}</div>
               <div style={{ fontSize: '0.65rem', opacity: 0.8, marginTop: '0.2rem' }}>URL: {wsUrl}</div>

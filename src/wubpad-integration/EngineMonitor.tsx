@@ -10,6 +10,7 @@ export const EngineMonitor: React.FC = () => {
   const [health, setHealth] = useState<any>(null);
   const [lastError, setLastError] = useState<string | null>(null);
   const [diagnostics, setDiagnostics] = useState<any>(null);
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
 
   useEffect(() => {
     let client: WubWebSocketClient | null = null;
@@ -21,6 +22,7 @@ export const EngineMonitor: React.FC = () => {
     
       unbindStatus = client.onStatusChange((s, err) => {
         setStatus(s);
+        setReconnectAttempts(client?.getReconnectAttempts() ?? 0);
         if (s === 'connected') setLastError(null);
         if (err) setLastError(err);
       });
@@ -92,9 +94,11 @@ export const EngineMonitor: React.FC = () => {
         <strong>WS URL:</strong> <span>{getWubLabzWsUrl()}</span>
         
         <strong>Socket Status:</strong> 
-        <span style={{ color: status === 'connected' ? 'green' : 'red', fontWeight: 'bold' }}>
+        <span style={{ color: status === 'connected' ? 'green' : status === 'tripped' ? 'red' : 'orange', fontWeight: 'bold' }}>
           {status.toUpperCase()}
         </span>
+
+        <strong>Reconnects:</strong> <span>{reconnectAttempts}</span>
 
         <strong>Health Check:</strong>
         <span style={{ color: healthOk ? 'green' : health ? 'red' : '#777' }}>

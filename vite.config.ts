@@ -6,6 +6,17 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 3000,
+    strictPort: false,
+    watch: {
+      ignored: [
+        '**/dist/**',
+        '**/node_modules/**',
+        '**/.git/**',
+        '**/logs/**',
+        '**/coverage/**',
+        '**/*.log'
+      ]
+    }
   },
   build: {
     outDir: 'dist/app',

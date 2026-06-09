@@ -129,6 +129,23 @@ export async function startServer(): Promise<WubLabzServerStartResult> {
 
   const server = await createWubLabzServer();
 
+  const shutdown = async (signal: string) => {
+    console.info(`${signal} received. Shutting down gracefully...`);
+    await server.close();
+    console.info('Server closed');
+    process.exit(0);
+  };
+
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception:', err);
+    server.close().finally(() => process.exit(1));
+  });
+  process.on('unhandledRejection', (reason) => {
+    console.error('Unhandled Rejection:', reason);
+  });
+
   try {
     await server.listen({ port, host: '0.0.0.0' });
     console.log(formatStartupDiagnostics(port));

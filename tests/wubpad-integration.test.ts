@@ -72,7 +72,7 @@ describe('WubWebSocketClient', () => {
     expect(client.getStatus()).toBe('disconnected');
   });
 
-  it('reconnects with backoff on unclean close', async () => {
+  it('reconnects with exponential backoff on unclean close', async () => {
     client.connect();
     MockWebSocket.instances[0].triggerOpen();
     expect(client.getStatus()).toBe('connected');
@@ -81,13 +81,45 @@ describe('WubWebSocketClient', () => {
     MockWebSocket.instances[0].triggerClose(false, 1006);
     expect(client.getStatus()).toBe('error');
     
-    // First reconnect should happen after 1000ms
-    await vi.advanceTimersByTimeAsync(1100);
+    // First reconnect should happen after ~1000ms (+ jitter)
+    await vi.advanceTimersByTimeAsync(1300);
     expect(client.getStatus()).toBe('reconnecting');
     expect(MockWebSocket.instances.length).toBe(2);
     
-    MockWebSocket.instances[1].triggerOpen();
-    expect(client.getStatus()).toBe('connected');
+    // Simulate another failure
+    MockWebSocket.instances[1].triggerClose(false, 1006);
+    
+    // Second reconnect should happen after ~1500ms (+ jitter)
+    await vi.advanceTimersByTimeAsync(1800);
+    expect(client.getStatus()).toBe('reconnecting');
+    expect(MockWebSocket.instances.length).toBe(3);
+  });
+
+  it('trips circuit breaker after repeated failures', async () => {
+    client.connect();
+    
+    for (let i = 0; i < 5; i++) {
+        const ws = MockWebSocket.instances[i];
+        ws.triggerClose(false, 1006);
+        // Advance time to trigger next reconnect
+        await vi.advanceTimersByTimeAsync(5000);
+    }
+
+    expect(client.getStatus()).toBe('tripped');
+    expect(MockWebSocket.instances.length).toBe(5); // Should stop after 5
+  });
+
+  it('resets circuit breaker manually', async () => {
+    client.connect();
+    for (let i = 0; i < 5; i++) {
+        MockWebSocket.instances[i].triggerClose(false, 1006);
+        await vi.advanceTimersByTimeAsync(5000);
+    }
+    expect(client.getStatus()).toBe('tripped');
+
+    client.resetCircuitBreaker();
+    expect(client.getStatus()).toBe('connecting');
+    expect(MockWebSocket.instances.length).toBe(6);
   });
 
   it('captures close code and reason on disconnect', async () => {

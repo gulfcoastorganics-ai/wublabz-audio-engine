@@ -1,18 +1,26 @@
 import { getWubLabzWsUrl } from './env.js';
 import { validateInboundEvent, type ValidatedWubLabzEvent } from '../wublabz/protocol.js';
 
-export type WubConnectionStatus = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'error';
+export type WubConnectionStatus = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'error' | 'tripped';
 
 export interface WubWebSocketClientOptions {
   url?: string;
   clientId?: string;
   autoConnect?: boolean;
+  maxReconnectAttempts?: number;
+  baseReconnectDelay?: number;
+  maxReconnectDelay?: number;
 }
 
 export class WubWebSocketClient {
   private ws: WebSocket | null = null;
   private reconnectTimeout: any = null;
-  private reconnectDelay = 1000;
+  private reconnectDelay: number;
+  private readonly baseReconnectDelay: number;
+  private readonly maxReconnectDelay: number;
+  private readonly maxReconnectAttempts: number;
+  private reconnectAttempts = 0;
+  
   private status: WubConnectionStatus = 'idle';
   private lastError: string | null = null;
   private lastCloseCode: number | null = null;
@@ -23,23 +31,37 @@ export class WubWebSocketClient {
   private heartbeatInterval: any = null;
   private readonly url: string;
   private readonly clientId: string;
+  
+  private failureWindowStart = 0;
+  private failuresInWindow = 0;
+  private readonly CIRCUIT_BREAKER_THRESHOLD = 5;
+  private readonly CIRCUIT_BREAKER_WINDOW_MS = 30000;
 
   constructor(options: WubWebSocketClientOptions = {}) {
     this.url = options.url ?? getWubLabzWsUrl();
     this.clientId = options.clientId ?? `wubpad-${Math.random().toString(36).substring(2, 9)}`;
+    this.baseReconnectDelay = options.baseReconnectDelay ?? 1000;
+    this.maxReconnectDelay = options.maxReconnectDelay ?? 30000;
+    this.maxReconnectAttempts = options.maxReconnectAttempts ?? 50;
+    this.reconnectDelay = this.baseReconnectDelay;
+
     if (options.autoConnect) {
       this.connect();
     }
   }
 
   connect() {
+    if (this.status === 'tripped') return;
+
     const WebSocketCtor = getWebSocketConstructor();
     if (!WebSocketCtor) {
       this.handleError('WebSocket is unavailable in this browser/runtime');
       return;
     }
 
-    if (this.ws?.readyState === WebSocketCtor.OPEN || this.ws?.readyState === WebSocketCtor.CONNECTING) return;
+    if (this.ws && (this.ws.readyState === WebSocketCtor.OPEN || this.ws.readyState === WebSocketCtor.CONNECTING)) {
+        return;
+    }
 
     this.cleanupReconnect();
     this.setStatus(this.status === 'disconnected' || this.status === 'error' ? 'reconnecting' : 'connecting');
@@ -52,7 +74,9 @@ export class WubWebSocketClient {
     }
 
     this.ws.onopen = () => {
-      this.reconnectDelay = 1000;
+      this.reconnectDelay = this.baseReconnectDelay;
+      this.reconnectAttempts = 0;
+      this.failuresInWindow = 0;
       this.lastError = null;
       this.lastCloseCode = null;
       this.lastCloseReason = null;
@@ -82,24 +106,50 @@ export class WubWebSocketClient {
     this.ws.onclose = (event) => {
       const wasConnected = this.status === 'connected';
       const wasAttempting = this.status === 'connecting' || this.status === 'reconnecting';
+      
       this.lastCloseCode = event.code;
       this.lastCloseReason = event.reason;
       this.cleanup();
       
       if (!event.wasClean) {
+        this.recordFailure();
         this.handleError(`Connection lost (code: ${event.code}, reason: ${event.reason || 'none'})`);
       } else {
         this.setStatus('disconnected');
       }
       
-      if (wasConnected || wasAttempting || this.status === 'error') {
+      if (this.status !== 'tripped' && (wasConnected || wasAttempting || this.status === 'error')) {
         this.scheduleReconnect();
       }
     };
 
-    this.ws.onerror = (err) => {
+    this.ws.onerror = () => {
       this.handleError('WebSocket error occurred');
     };
+  }
+
+  private recordFailure() {
+    const now = Date.now();
+    if (now - this.failureWindowStart > this.CIRCUIT_BREAKER_WINDOW_MS) {
+      this.failureWindowStart = now;
+      this.failuresInWindow = 1;
+    } else {
+      this.failuresInWindow++;
+    }
+
+    if (this.failuresInWindow >= this.CIRCUIT_BREAKER_THRESHOLD) {
+      this.setStatus('tripped', 'Circuit breaker tripped after repeated failures. Manual retry required.');
+    }
+  }
+
+  resetCircuitBreaker() {
+    this.failuresInWindow = 0;
+    this.reconnectAttempts = 0;
+    this.reconnectDelay = this.baseReconnectDelay;
+    if (this.status === 'tripped') {
+        this.setStatus('idle');
+    }
+    this.connect();
   }
 
   reconnect() {
@@ -109,16 +159,29 @@ export class WubWebSocketClient {
 
   private handleError(message: string) {
     this.lastError = message;
-    this.setStatus('error', message);
+    if (this.status !== 'tripped') {
+        this.setStatus('error', message);
+    }
   }
 
   private scheduleReconnect() {
-    if (this.reconnectTimeout) return;
+    if (this.reconnectTimeout || this.status === 'tripped') return;
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+        this.setStatus('tripped', 'Maximum reconnection attempts reached.');
+        return;
+    }
+
+    this.reconnectAttempts++;
+    
+    // Exponential backoff with jitter
+    const jitter = Math.random() * 200;
+    const delay = Math.min(this.reconnectDelay + jitter, this.maxReconnectDelay);
+    
     this.reconnectTimeout = setTimeout(() => {
       this.reconnectTimeout = null;
-      this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000);
+      this.reconnectDelay = Math.min(this.reconnectDelay * 1.5, this.maxReconnectDelay);
       this.connect();
-    }, this.reconnectDelay);
+    }, delay);
   }
 
   private cleanupReconnect() {
@@ -129,6 +192,7 @@ export class WubWebSocketClient {
   }
 
   private startHeartbeat() {
+    this.cleanup(); // Ensure no double heartbeats
     this.heartbeatInterval = setInterval(() => {
       this.send('HEARTBEAT', { clientSent: Date.now() });
     }, 5000);
@@ -159,8 +223,13 @@ export class WubWebSocketClient {
       return false;
     }
 
-    this.ws.send(JSON.stringify(validation.event));
-    return true;
+    try {
+        this.ws.send(JSON.stringify(validation.event));
+        return true;
+    } catch (err) {
+        console.error('Failed to send WebSocket message', err);
+        return false;
+    }
   }
 
   onEvent(listener: (event: ValidatedWubLabzEvent) => void) {
@@ -180,6 +249,10 @@ export class WubWebSocketClient {
 
   getStatus(): WubConnectionStatus {
     return this.status;
+  }
+
+  getReconnectAttempts(): number {
+    return this.reconnectAttempts;
   }
 
   getLastError(): string | null {
@@ -220,7 +293,9 @@ export class WubWebSocketClient {
       }
       this.ws = null;
     }
-    this.setStatus('disconnected');
+    if (this.status !== 'tripped') {
+        this.setStatus('disconnected');
+    }
   }
 }
 
