@@ -241,6 +241,7 @@ export function TransportBar() {
     exportWav,
   } = useStudioStore();
   const { beginnerModeEnabled, askGuide } = useWubGuide();
+  const markProgress = useWubGuide((state) => state.markProgress);
 
   const loopStartRef = useRef(String(loopStart));
   const loopEndRef = useRef(String(loopEnd));
@@ -252,6 +253,14 @@ export function TransportBar() {
 
   const handleStop = useCallback(() => stop(), [stop]);
   const handleRewind = useCallback(() => seek(0), [seek]);
+  const handleSave = useCallback(async () => {
+    await save();
+    markProgress({ savedProject: true });
+  }, [markProgress, save]);
+  const handleExportWav = useCallback(async () => {
+    await exportWav();
+    markProgress({ exportedAudio: true });
+  }, [exportWav, markProgress]);
 
   const handleBpmChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -492,7 +501,7 @@ export function TransportBar() {
 
       {/* ── Save / Export ────────────────────────────────────────────────── */}
       <button
-        onClick={() => void save()}
+        onClick={() => void handleSave()}
         style={S.btnSave}
         data-wubguide-target="save"
         aria-label="Save"
@@ -501,7 +510,7 @@ export function TransportBar() {
         Save
       </button>
       <button
-        onClick={() => void exportWav()}
+        onClick={() => void handleExportWav()}
         style={S.btnExport}
         data-wubguide-target="export"
         aria-label="Export WAV"

@@ -178,6 +178,7 @@ WubGuide is local deterministic help for now:
 - No remote model calls.
 - Rule-based prompt matching from local knowledge.
 - Deterministic action workflows only, such as opening panels and focusing highlighted UI regions.
+- Context-aware onboarding displays Beginner Journey milestones and a proactive next-step prompt.
 - Future real AI integration should keep the same UI affordances and remain optional.
 
 ## Accessibility and Interaction

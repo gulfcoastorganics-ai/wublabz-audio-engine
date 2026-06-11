@@ -27,6 +27,8 @@ WubGuide AI is local and deterministic for now:
 - No audio is uploaded.
 - Questions are answered with keyword/rule-based matching.
 - Action workflows can open panels, focus controls, create starter tracks, and create starter MIDI clip placeholders.
+- Context-aware onboarding tracks beginner milestones and proactively suggests the next step.
+- Progress is persisted in local storage.
 - Responses can highlight UI targets such as transport, browser, arrangement, mixer, piano roll, save, export, snap, loop, tracks, and clips.
 - The tutorial walks through transport, browser, arrangement, mixer, piano roll, save, and export.
 
@@ -86,7 +88,7 @@ As of the Beginner Mode/WubGuide pass:
 - Typecheck passing.
 - Lint passing.
 - Build passing.
-- Test suite passing: 32 files, 142 tests.
+- Test suite passing: 32 files, 144 tests.
 
 ## Roadmap
 

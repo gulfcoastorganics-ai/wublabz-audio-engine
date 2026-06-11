@@ -178,7 +178,7 @@ function ToolBtn({
 
 export function PianoRoll({ onClose }: { onClose: () => void }) {
   const { project, pianoRollClipId, addMidiNote, updateMidiNote, deleteMidiNote } = useStudioStore();
-  const { beginnerModeEnabled, askGuide } = useWubGuide();
+  const { beginnerModeEnabled, askGuide, markProgress } = useWubGuide();
   const clip = project.midiClips.find((c) => c.id === pianoRollClipId) as MidiClip | undefined;
 
   const [pxPerBeat, setPxPerBeat] = useState(40);
@@ -189,6 +189,10 @@ export function PianoRoll({ onClose }: { onClose: () => void }) {
   const noteAreaRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragNote | null>(null);
   const [, forceUpdate] = useState(0);
+
+  useEffect(() => {
+    markProgress({ openedPianoRoll: true });
+  }, [markProgress]);
 
   const clipDuration = clip ? clip.endTime - clip.startTime : 8;
   const bpm = project.bpm;

@@ -6,6 +6,14 @@ import userEvent from '@testing-library/user-event';
 import { WubGuidePanel } from '../src/ui/assistant/WubGuidePanel.js';
 import { answerWubGuidePrompt, WUB_GUIDE_WELCOME_RESPONSE } from '../src/ui/assistant/wubGuideKnowledge.js';
 import { useWubGuide } from '../src/ui/assistant/useWubGuide.js';
+import {
+  EMPTY_USER_PROGRESS,
+  WUB_GUIDE_PROGRESS_STORAGE_KEY,
+  loadWubGuideProgress,
+  saveWubGuideProgress,
+} from '../src/ui/assistant/wubGuideProgress.js';
+import { createWubGuideContext } from '../src/ui/assistant/wubGuideContextEngine.js';
+import { createEmptyProject } from '../src/lib/project/projectTimeline.js';
 
 function resetGuideStore() {
   useWubGuide.setState({
@@ -18,15 +26,18 @@ function resetGuideStore() {
     currentResponse: WUB_GUIDE_WELCOME_RESPONSE,
     lastPrompt: '',
     actionFeedback: null,
+    userProgress: { ...EMPTY_USER_PROGRESS },
   });
 }
 
 beforeEach(() => {
+  localStorage.clear();
   resetGuideStore();
 });
 
 afterEach(() => {
   cleanup();
+  localStorage.clear();
   resetGuideStore();
 });
 
@@ -51,10 +62,9 @@ describe('WubGuidePanel', () => {
     await user.click(screen.getByRole('button', { name: /Import Audio Help/i }));
 
     await waitFor(() => {
-      expect(screen.getByText('Import Audio')).toBeInTheDocument();
+      expect(screen.getByText('I highlighted it for you.')).toBeInTheDocument();
+      expect(useWubGuide.getState().activeGuideTarget).toBe('import-zone');
     });
-    expect(screen.getByText('I highlighted it for you.')).toBeInTheDocument();
-    expect(useWubGuide.getState().activeGuideTarget).toBe('import-zone');
   });
 
   it('tutorial next, back, and finish update tutorial state', async () => {
@@ -65,8 +75,10 @@ describe('WubGuidePanel', () => {
     expect(screen.getByText(/Step 1 \/ 7/)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /^Next$/i }));
-    expect(useWubGuide.getState().tutorialStepIndex).toBe(1);
-    expect(screen.getByText(/Step 2 \/ 7/)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(useWubGuide.getState().tutorialStepIndex).toBe(1);
+      expect(screen.getByText(/Step 2 \/ 7/)).toBeInTheDocument();
+    });
 
     await user.click(screen.getByRole('button', { name: /^Back$/i }));
     expect(useWubGuide.getState().tutorialStepIndex).toBe(0);
@@ -96,5 +108,41 @@ describe('WubGuidePanel', () => {
       'createTrack',
       'focusArrangement',
     ]);
+  });
+
+  it('persists beginner progress in local storage', () => {
+    saveWubGuideProgress({ ...EMPTY_USER_PROGRESS, savedProject: true });
+
+    expect(loadWubGuideProgress().savedProject).toBe(true);
+    expect(localStorage.getItem(WUB_GUIDE_PROGRESS_STORAGE_KEY)).toContain('savedProject');
+  });
+
+  it('derives context-aware next step from project and progress', () => {
+    const empty = createEmptyProject('test-project', 'Test Project');
+    expect(createWubGuideContext(empty, EMPTY_USER_PROGRESS).nextSuggestion.body).toBe(
+      'Wanna import your first sample?'
+    );
+
+    const withAudio = {
+      ...empty,
+      audioAssets: [
+        {
+          id: 'asset-1',
+          name: 'Kick',
+          fileName: 'kick.wav',
+          mimeType: 'audio/wav',
+          durationSeconds: 1,
+          sampleRate: 44100,
+          channels: 1,
+          waveformPeaks: [],
+          byteLength: 1,
+          createdAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    };
+
+    expect(createWubGuideContext(withAudio, EMPTY_USER_PROGRESS).nextSuggestion.title).toBe(
+      'Next: Create Track'
+    );
   });
 });

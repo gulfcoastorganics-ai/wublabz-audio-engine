@@ -21,7 +21,7 @@ type ChannelViewItem = {
 
 export function MixerPanel() {
   const { project, updateChannel } = useStudioStore();
-  const { beginnerModeEnabled, askGuide } = useWubGuide();
+  const { beginnerModeEnabled, askGuide, markProgress } = useWubGuide();
   const channels: ChannelViewItem[] = project.tracks.map((track) => ({
     track,
     state: project.mixerState[track.id] ?? {
@@ -83,7 +83,10 @@ export function MixerPanel() {
             key={track.id}
             track={track}
             channel={state}
-            onChange={(patch) => updateChannel(track.id, patch)}
+            onChange={(patch) => {
+              markProgress({ openedMixer: true });
+              updateChannel(track.id, patch);
+            }}
           />
         ))}
 

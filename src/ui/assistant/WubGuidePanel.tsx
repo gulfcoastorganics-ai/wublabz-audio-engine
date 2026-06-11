@@ -2,6 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { WUB_GUIDE_QUICK_ACTIONS, WUB_GUIDE_TUTORIAL_STEPS } from './wubGuideKnowledge.js';
 import { useWubGuide } from './useWubGuide.js';
 import { WubGuideAvatar } from './WubGuideAvatar.js';
+import { useStudioStore } from '../../state/useStudioStore.js';
+import { createWubGuideContext } from './wubGuideContextEngine.js';
+import { WUB_GUIDE_MILESTONES } from './wubGuideProgress.js';
 import type { WubGuideAvatarState } from './wubGuideTypes.js';
 
 export function WubGuidePanel() {
@@ -10,10 +13,12 @@ export function WubGuidePanel() {
     assistantOpen,
     currentResponse,
     actionFeedback,
+    userProgress,
     lastPrompt,
     tutorialActive,
     tutorialStepIndex,
     askGuide,
+    markProgress,
     startTutorial,
     nextTutorialStep,
     previousTutorialStep,
@@ -21,6 +26,7 @@ export function WubGuidePanel() {
     finishTutorial,
     closeAssistant,
   } = useWubGuide();
+  const project = useStudioStore((state) => state.project);
   const [prompt, setPrompt] = useState('');
   const [avatarState, setAvatarState] = useState<WubGuideAvatarState>('idle');
 
@@ -37,6 +43,17 @@ export function WubGuidePanel() {
     () => `${tutorialStepIndex + 1} / ${WUB_GUIDE_TUTORIAL_STEPS.length}`,
     [tutorialStepIndex]
   );
+  const context = useMemo(
+    () => createWubGuideContext(project, userProgress),
+    [project, userProgress]
+  );
+
+  useEffect(() => {
+    const changed = Object.entries(context.progress).some(
+      ([key, value]) => userProgress[key as keyof typeof userProgress] !== value
+    );
+    if (changed) markProgress(context.progress);
+  }, [context.progress, markProgress, userProgress]);
 
   if (!assistantOpen) return null;
 
@@ -107,6 +124,29 @@ export function WubGuidePanel() {
           )}
         </div>
       </div>
+
+      <section className="wubguide-progress-card" aria-label="Beginner Journey">
+        <div className="wubguide-progress-card-header">
+          <strong>Beginner Journey</strong>
+          <span>{context.completedCount}/{context.totalCount}</span>
+        </div>
+        <ul>
+          {WUB_GUIDE_MILESTONES.map((milestone) => (
+            <li key={milestone.id} data-complete={context.progress[milestone.id] ? 'true' : 'false'}>
+              <span aria-hidden="true">{context.progress[milestone.id] ? '✓' : ' '}</span>
+              {milestone.label}
+            </li>
+          ))}
+        </ul>
+        <button
+          type="button"
+          className="wubguide-next-step"
+          onClick={() => askGuide(context.nextSuggestion.body)}
+          aria-label={`Try next WubGuide step: ${context.nextSuggestion.title}`}
+        >
+          {context.nextSuggestion.body}
+        </button>
+      </section>
 
       <form className="wubguide-prompt-row" onSubmit={submitPrompt}>
         <label className="sr-only" htmlFor="wubguide-question">

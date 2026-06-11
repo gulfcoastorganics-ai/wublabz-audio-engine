@@ -160,13 +160,25 @@ const KNOWLEDGE: KnowledgeEntry[] = [
     id: 'midi-clip',
     title: 'Make a MIDI Clip',
     body: 'MIDI clips live on MIDI tracks. Double-click a MIDI lane or use the track MIDI button to create one.',
-    keywords: ['midi clip', 'make midi', 'create midi', 'add midi'],
+    keywords: ['midi clip', 'make midi', 'create midi', 'add midi', 'create clip', 'place sample', 'place that sample'],
     highlightTarget: 'clip',
     actions: [{ type: 'createClipPlaceholder' }],
     steps: [
       'Add a MIDI track if one is not visible.',
       'Double-click in a MIDI lane to create a clip.',
       'Open the clip to edit notes in the Piano Roll.',
+    ],
+  },
+  {
+    id: 'create-track',
+    title: 'Create Track',
+    body: 'Tracks are lanes for audio or MIDI. I can create a starter audio track so you have a place to build.',
+    keywords: ['create track', 'add track', 'make track', 'starter track'],
+    highlightTarget: 'track-header',
+    actions: [{ type: 'createTrack' }],
+    steps: [
+      'Use + Audio for samples or + MIDI for notes.',
+      'Start with one track, then add more as the idea grows.',
     ],
   },
   {

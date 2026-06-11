@@ -224,6 +224,7 @@ export function ArrangementView() {
       if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         void useStudioStore.getState().save();
+        useWubGuide.getState().markProgress({ savedProject: true });
       }
     }
     window.addEventListener('keydown', handleKey);

@@ -27,6 +27,8 @@ Current WubGuide behavior:
 - No raw audio upload.
 - Keyword/rule-based responses for common beginner questions.
 - Deterministic action workflows for opening panels, focusing controls, creating starter tracks, and creating starter MIDI clip placeholders.
+- Context-aware onboarding that tracks imported audio, created tracks, clips, Piano Roll use, Mixer use, saves, and exports.
+- Beginner Journey progress persisted in local storage.
 - Visual highlight system using `data-wubguide-target` UI targets.
 - Guided tutorial with Next, Back, Skip, and Finish.
 - Quick prompts for tutorial, import help, playback help, mixer help, piano roll help, export help, and a first beat checklist.
@@ -119,7 +121,7 @@ Future AI model integration can be added later, but it must remain optional and 
 Latest documented verification after the Beginner Mode/WubGuide pass:
 
 - 32 test files passing.
-- 142 tests passing.
+- 144 tests passing.
 - Typecheck passing.
 - Lint passing.
 - Build passing.

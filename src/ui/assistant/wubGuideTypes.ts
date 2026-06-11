@@ -1,4 +1,5 @@
 import type { WubGuideAction } from './wubGuideActions.js';
+import type { UserProgress } from './wubGuideProgress.js';
 
 export type WubGuideTarget =
   | 'transport'
@@ -57,6 +58,7 @@ export type BeginnerModeState = {
   currentResponse: WubGuideResponse;
   lastPrompt: string;
   actionFeedback: string | null;
+  userProgress: UserProgress;
 };
 
 export type BeginnerModeActions = {
@@ -66,6 +68,7 @@ export type BeginnerModeActions = {
   closeAssistant: () => void;
   setActiveGuideTarget: (target: WubGuideTarget | null, label?: string) => void;
   askGuide: (prompt: string) => WubGuideResponse;
+  markProgress: (patch: Partial<UserProgress>) => void;
   startTutorial: () => void;
   nextTutorialStep: () => void;
   previousTutorialStep: () => void;

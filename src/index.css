@@ -439,6 +439,86 @@ button:hover {
   letter-spacing: 0.04em;
 }
 
+.wubguide-progress-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.065);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.04), rgba(139, 127, 248, 0.045));
+}
+
+.wubguide-progress-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wubguide-progress-card-header strong {
+  color: var(--color-text-bright);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.wubguide-progress-card-header span {
+  color: rgba(206, 208, 234, 0.54);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.wubguide-progress-card ul {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wubguide-progress-card li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(206, 208, 234, 0.54);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.wubguide-progress-card li[data-complete="true"] {
+  color: rgba(238, 238, 255, 0.88);
+}
+
+.wubguide-progress-card li span {
+  display: inline-grid;
+  width: 15px;
+  height: 15px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.095);
+  border-radius: 5px;
+  color: #7ff0c0;
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 10px;
+  line-height: 1;
+}
+
+.wubguide-next-step {
+  min-height: 28px;
+  padding: 6px 9px;
+  border: 1px solid rgba(91, 156, 248, 0.28);
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(91, 156, 248, 0.13), rgba(139, 127, 248, 0.08));
+  color: var(--color-text-bright);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  text-align: left;
+}
+
 .wubguide-message-guide {
   background: linear-gradient(135deg, rgba(139, 127, 248, 0.12), rgba(91, 156, 248, 0.052));
 }

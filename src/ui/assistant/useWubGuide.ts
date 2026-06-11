@@ -5,7 +5,14 @@ import {
   WUB_GUIDE_WELCOME_RESPONSE,
 } from './wubGuideKnowledge.js';
 import { executeWubGuideActions } from './wubGuideWorkflowEngine.js';
+import {
+  loadWubGuideProgress,
+  mergeUserProgress,
+  saveWubGuideProgress,
+  type UserProgress,
+} from './wubGuideProgress.js';
 import type { WubGuideResponse, WubGuideStore, WubGuideTarget } from './wubGuideTypes.js';
+import type { WubGuideAction } from './wubGuideActions.js';
 
 function responseLabel(response: WubGuideResponse): string | undefined {
   return response.highlightTarget ? response.title : undefined;
@@ -22,6 +29,20 @@ function tutorialResponse(stepIndex: number): WubGuideResponse {
   };
 }
 
+function progressPatchFromActions(actions: WubGuideAction[] | undefined): Partial<UserProgress> {
+  const patch: Partial<UserProgress> = {};
+  for (const action of actions ?? []) {
+    if (action.type === 'openMixer') patch.openedMixer = true;
+    if (action.type === 'openPianoRoll') patch.openedPianoRoll = true;
+    if (action.type === 'createTrack') patch.createdTrack = true;
+    if (action.type === 'createClipPlaceholder') {
+      patch.createdTrack = true;
+      patch.createdClip = true;
+    }
+  }
+  return patch;
+}
+
 export const useWubGuide = create<WubGuideStore>((set, get) => ({
   beginnerModeEnabled: false,
   assistantOpen: false,
@@ -32,6 +53,7 @@ export const useWubGuide = create<WubGuideStore>((set, get) => ({
   currentResponse: WUB_GUIDE_WELCOME_RESPONSE,
   lastPrompt: '',
   actionFeedback: null,
+  userProgress: loadWubGuideProgress(),
 
   toggleBeginnerMode() {
     const enabled = !get().beginnerModeEnabled;
@@ -79,6 +101,8 @@ export const useWubGuide = create<WubGuideStore>((set, get) => ({
 
     const actionResult = executeWubGuideActions(response.actions);
     const activeGuideTarget = actionResult.highlightTarget ?? response.highlightTarget ?? null;
+    const nextProgress = mergeUserProgress(get().userProgress, progressPatchFromActions(response.actions));
+    saveWubGuideProgress(nextProgress);
     set({
       beginnerModeEnabled: true,
       assistantOpen: true,
@@ -87,9 +111,16 @@ export const useWubGuide = create<WubGuideStore>((set, get) => ({
       activeGuideTarget,
       guideFloatingLabel: actionResult.label ?? responseLabel(response) ?? null,
       actionFeedback: actionResult.didAct ? 'I highlighted it for you.' : null,
+      userProgress: nextProgress,
       tutorialActive: false,
     });
     return response;
+  },
+
+  markProgress(patch) {
+    const next = mergeUserProgress(get().userProgress, patch);
+    saveWubGuideProgress(next);
+    set({ userProgress: next });
   },
 
   startTutorial() {
