@@ -11,6 +11,7 @@ WubLabz Studio currently provides the core browser DAW surface:
 - Transport for play, stop, rewind, BPM, loop, snap, save, export, and panel toggles.
 - Browser sidebar for local sample import and project loading.
 - Arrangement view with tracks, clips, timeline ruler, grid, loop region, context menu, and playhead.
+- Clip editing tools: split at playhead, normalize, reverse, fade in/out, gain control, reset edits, and a per-clip inspector panel.
 - Mixer panel with channel strips, mute/solo, pan, faders, and master control.
 - Piano roll for MIDI note editing, note drawing, selection, erase mode, grid size, velocity, and velocity lane.
 - Beginner Mode with WubGuide AI, a local deterministic assistant that teaches the interface and highlights relevant controls.

@@ -8,7 +8,7 @@ Current UI modules include:
 
 - Transport
 - Browser
-- Arrangement view
+- Arrangement view with clip editing tools
 - Mixer
 - Piano roll
 - App shell view switcher
@@ -93,10 +93,14 @@ It does not analyze raw audio and does not call external AI APIs.
 - Scrollable arrangement lanes.
 - Audio and MIDI clip blocks.
 - Clip move/resize interaction.
-- Context menu for clip actions.
+- Context menu for clip actions (split at playhead, normalize, reverse, fade in/out, reset edits, duplicate, delete).
+- Clip Inspector panel showing name, times, gain, fades, reverse, and normalize for selected audio clips.
+- Visual badges (REV, NRM, gain) and fade overlays on clip blocks.
 - Loop region visualization.
 - Glowing playhead.
 - Empty-state guidance.
+
+See [docs/CLIP_EDITING.md](CLIP_EDITING.md) for full clip editing documentation.
 
 ### MixerPanel
 

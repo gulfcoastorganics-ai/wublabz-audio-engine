@@ -5,7 +5,7 @@ import React, {
   useState,
 } from 'react';
 import { useStudioStore } from '../../state/useStudioStore.js';
-import type { AudioClip, AudioAsset, MidiClip, Track } from '../../lib/project/projectSchema.js';
+import type { AudioClip, AudioAsset, AudioClipEdit, MidiClip, Track } from '../../lib/project/projectSchema.js';
 import { useWubGuide } from '../assistant/useWubGuide.js';
 
 const TRACK_HEADER_WIDTH = 176;
@@ -50,6 +50,8 @@ export function ArrangementView() {
     splitClip,
     deleteClip,
     duplicateClip,
+    updateClipEdit,
+    resetClipEdits,
     addTrack,
     addMidiClip,
     importFile,
@@ -482,8 +484,48 @@ export function ArrangementView() {
               ? () => { openPianoRoll(ctxMenu.clipId); setCtxMenu(null); }
               : undefined
           }
+          onNormalize={
+            ctxMenu.clipType === 'audio'
+              ? () => { updateClipEdit(ctxMenu.clipId, { normalized: true }); setCtxMenu(null); }
+              : undefined
+          }
+          onReverse={
+            ctxMenu.clipType === 'audio'
+              ? () => {
+                  const clip = project.audioClips.find((c) => c.id === ctxMenu.clipId);
+                  updateClipEdit(ctxMenu.clipId, { reverse: !clip?.edit?.reverse });
+                  setCtxMenu(null);
+                }
+              : undefined
+          }
+          onAddFadeIn={
+            ctxMenu.clipType === 'audio'
+              ? () => { updateClipEdit(ctxMenu.clipId, { fadeInSeconds: 0.05 }); setCtxMenu(null); }
+              : undefined
+          }
+          onAddFadeOut={
+            ctxMenu.clipType === 'audio'
+              ? () => { updateClipEdit(ctxMenu.clipId, { fadeOutSeconds: 0.05 }); setCtxMenu(null); }
+              : undefined
+          }
+          onResetEdits={
+            ctxMenu.clipType === 'audio'
+              ? () => { resetClipEdits(ctxMenu.clipId); setCtxMenu(null); }
+              : undefined
+          }
         />
       )}
+
+      {/* Clip inspector */}
+      {selectedClipId && (() => {
+        const selClip = project.audioClips.find((c) => c.id === selectedClipId);
+        return selClip ? (
+          <ClipInspector
+            clip={selClip}
+            onUpdateEdit={(edit) => updateClipEdit(selectedClipId, edit)}
+          />
+        ) : null;
+      })()}
 
       <div style={{
         padding: '3px 12px',
@@ -628,6 +670,11 @@ function ClipBlock({
   );
 
   const base = track.color ?? (clip.type === 'audio' ? '#3b5bdb' : '#166e4c');
+  const edit = clip.type === 'audio' ? (clip as AudioClip).edit : null;
+  const duration = clip.endTime - clip.startTime;
+  const fadeInPct = edit?.fadeInSeconds ? Math.min(40, (edit.fadeInSeconds / duration) * 100) : 0;
+  const fadeOutPct = edit?.fadeOutSeconds ? Math.min(40, (edit.fadeOutSeconds / duration) * 100) : 0;
+  const showGain = edit?.gain !== undefined && edit.gain !== 1.0;
 
   return (
     <div
@@ -642,7 +689,7 @@ function ClipBlock({
         cursor: 'grab', zIndex: isDragging ? 50 : 1,
         background: `linear-gradient(160deg, ${base}f0 0%, ${base}ad 58%, rgba(7,10,22,0.48) 100%)`,
         boxShadow: isSelected
-          ? '0 0 0 1px rgba(139,127,248,0.42), 0 0 22px rgba(139,127,248,0.28), 0 8px 20px rgba(0,0,0,0.32)'
+          ? `0 0 0 2px rgba(139,127,248,0.55), 0 0 28px rgba(139,127,248,0.38), 0 8px 20px rgba(0,0,0,0.32)`
           : '0 3px 10px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.12)',
         transition: isDragging ? 'none' : 'box-shadow 0.12s',
         willChange: isDragging ? 'transform' : undefined,
@@ -652,33 +699,63 @@ function ClipBlock({
       onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick(); }}
       onContextMenu={onContextMenu}
     >
+      {/* Clip header bar */}
       <div style={{
         height: 16, flexShrink: 0,
         background: `linear-gradient(90deg, ${base}, rgba(255,255,255,0.08))`,
         display: 'flex', alignItems: 'center',
-        padding: '0 7px',
+        padding: '0 5px', gap: 3,
         borderBottom: '1px solid rgba(255,255,255,0.13)',
       }}>
         <span style={{
           fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.94)',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
         }}>
           {clip.name}
         </span>
-        {clip.muted && (
-          <span style={{ color: 'rgba(245,166,35,0.9)', fontSize: 8, marginLeft: 3, fontWeight: 700 }}>M</span>
-        )}
+        {clip.muted && <ClipBadge label="M" color="rgba(245,166,35,0.9)" />}
+        {edit?.reverse && <ClipBadge label="REV" color="rgba(139,127,248,0.9)" />}
+        {edit?.normalized && <ClipBadge label="NRM" color="rgba(91,210,156,0.9)" />}
+        {showGain && <ClipBadge label={`G${(edit!.gain!).toFixed(2)}`} color="rgba(91,156,248,0.9)" />}
       </div>
 
-      <div style={{ flex: 1, overflow: 'hidden', padding: '1px 2px' }}>
+      {/* Waveform / MIDI miniature */}
+      <div style={{ flex: 1, overflow: 'hidden', padding: '1px 2px', position: 'relative' }}>
         {clip.type === 'audio' && asset && (
           <WaveformMiniature peaks={asset.waveformPeaks} />
         )}
         {clip.type === 'midi' && (
-          <MidiMiniature notes={(clip as MidiClip).notes} duration={clip.endTime - clip.startTime} />
+          <MidiMiniature notes={(clip as MidiClip).notes} duration={duration} />
+        )}
+
+        {/* Fade-in overlay */}
+        {fadeInPct > 0 && (
+          <div
+            data-testid="fade-in-overlay"
+            style={{
+              position: 'absolute', top: 0, left: 0, bottom: 0,
+              width: `${fadeInPct}%`,
+              background: 'linear-gradient(90deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 100%)',
+              pointerEvents: 'none',
+            }}
+          />
+        )}
+
+        {/* Fade-out overlay */}
+        {fadeOutPct > 0 && (
+          <div
+            data-testid="fade-out-overlay"
+            style={{
+              position: 'absolute', top: 0, right: 0, bottom: 0,
+              width: `${fadeOutPct}%`,
+              background: 'linear-gradient(270deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 100%)',
+              pointerEvents: 'none',
+            }}
+          />
         )}
       </div>
 
+      {/* Resize handle */}
       <div
         style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: 8, cursor: 'ew-resize', zIndex: 2 }}
         onPointerDown={(e) => { e.stopPropagation(); onResizeStart(e); }}
@@ -736,12 +813,173 @@ function MidiMiniature({ notes, duration }: { notes: MidiClip['notes']; duration
   );
 }
 
+// ─── ClipBadge ────────────────────────────────────────────────────────────────
+
+function ClipBadge({ label, color }: { label: string; color: string }) {
+  return (
+    <span style={{
+      fontSize: 7, fontWeight: 700, color,
+      padding: '0 2px',
+      background: 'rgba(0,0,0,0.35)',
+      borderRadius: 2,
+      letterSpacing: '0.04em',
+      flexShrink: 0,
+    }}>
+      {label}
+    </span>
+  );
+}
+
+// ─── ClipInspector ────────────────────────────────────────────────────────────
+
+function ClipInspector({
+  clip,
+  onUpdateEdit,
+}: {
+  clip: AudioClip;
+  onUpdateEdit: (edit: Partial<AudioClipEdit>) => void;
+}) {
+  const duration = clip.endTime - clip.startTime;
+  const edit = clip.edit ?? {};
+  const gain = edit.gain ?? 1.0;
+  const fadeIn = edit.fadeInSeconds ?? 0;
+  const fadeOut = edit.fadeOutSeconds ?? 0;
+  const reverse = edit.reverse ?? false;
+  const normalized = edit.normalized ?? false;
+
+  return (
+    <div
+      aria-label="Clip inspector"
+      style={{
+        padding: '5px 12px',
+        background: 'linear-gradient(180deg, rgba(13,16,34,0.98), rgba(8,10,24,0.98))',
+        borderTop: '1px solid rgba(139,127,248,0.22)',
+        display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+        fontSize: 10, color: 'rgba(206,208,234,0.7)', flexShrink: 0,
+      }}
+    >
+      <span style={{
+        fontWeight: 700, color: 'rgba(238,238,255,0.9)', maxWidth: 120,
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>
+        {clip.name}
+      </span>
+      <InspField label="Start" value={`${clip.startTime.toFixed(2)}s`} />
+      <InspField label="End" value={`${clip.endTime.toFixed(2)}s`} />
+      <InspField label="Dur" value={`${duration.toFixed(2)}s`} />
+      <InspNumField
+        label="Gain"
+        value={gain}
+        min={0} max={4} step={0.05}
+        onChange={(v) => onUpdateEdit({ gain: v })}
+      />
+      <InspNumField
+        label="Fade In"
+        value={fadeIn}
+        min={0} max={duration / 2} step={0.01}
+        suffix="s"
+        onChange={(v) => onUpdateEdit({ fadeInSeconds: v })}
+      />
+      <InspNumField
+        label="Fade Out"
+        value={fadeOut}
+        min={0} max={duration / 2} step={0.01}
+        suffix="s"
+        onChange={(v) => onUpdateEdit({ fadeOutSeconds: v })}
+      />
+      <InspToggle
+        label="Reverse"
+        active={reverse}
+        onChange={(v) => onUpdateEdit({ reverse: v })}
+      />
+      <InspToggle
+        label="Normalize"
+        active={normalized}
+        onChange={(v) => onUpdateEdit({ normalized: v })}
+      />
+    </div>
+  );
+}
+
+function InspField({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+      <span style={{ color: 'rgba(206,208,234,0.4)', fontSize: 9 }}>{label}</span>
+      <span style={{ color: 'rgba(206,208,234,0.82)', fontWeight: 600 }}>{value}</span>
+    </div>
+  );
+}
+
+function InspNumField({
+  label, value, min, max, step, suffix, onChange,
+}: {
+  label: string; value: number; min: number; max: number; step: number;
+  suffix?: string; onChange: (v: number) => void;
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+      <span style={{ color: 'rgba(206,208,234,0.4)', fontSize: 9 }}>{label}</span>
+      <input
+        type="number"
+        value={value.toFixed(step < 0.1 ? 2 : step < 1 ? 2 : 1)}
+        min={min} max={max} step={step}
+        aria-label={label}
+        onChange={(e) => {
+          const v = parseFloat(e.target.value);
+          if (!isNaN(v)) onChange(Math.max(min, Math.min(max, v)));
+        }}
+        style={{
+          width: 52, height: 18,
+          background: 'rgba(255,255,255,0.06)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: 4, color: 'rgba(206,208,234,0.88)',
+          fontSize: 10, textAlign: 'right', padding: '0 3px',
+        }}
+      />
+      {suffix && <span style={{ color: 'rgba(206,208,234,0.35)', fontSize: 9 }}>{suffix}</span>}
+    </div>
+  );
+}
+
+function InspToggle({
+  label, active, onChange,
+}: {
+  label: string; active: boolean; onChange: (v: boolean) => void;
+}) {
+  return (
+    <button
+      aria-label={label}
+      aria-pressed={active}
+      onClick={() => onChange(!active)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 3,
+        padding: '1px 6px', height: 18,
+        background: active ? 'rgba(139,127,248,0.22)' : 'rgba(255,255,255,0.04)',
+        border: active ? '1px solid rgba(139,127,248,0.5)' : '1px solid rgba(255,255,255,0.1)',
+        borderRadius: 4, cursor: 'pointer',
+        color: active ? 'rgba(206,208,234,0.95)' : 'rgba(206,208,234,0.42)',
+        fontSize: 9, fontWeight: 600, letterSpacing: '0.04em',
+        transition: 'background 0.1s, border 0.1s, color 0.1s',
+        boxShadow: active ? '0 0 6px rgba(139,127,248,0.28)' : 'none',
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
 // ─── Context menu ─────────────────────────────────────────────────────────────
 
-function ClipContextMenu({ x, y, clipType, onClose, onDelete, onDuplicate, onSplit, onOpenPianoRoll }: {
+function ClipContextMenu({
+  x, y, clipType,
+  onDelete, onDuplicate, onSplit, onOpenPianoRoll,
+  onNormalize, onReverse, onAddFadeIn, onAddFadeOut, onResetEdits,
+}: {
   x: number; y: number; clipId: string; clipType: 'audio' | 'midi';
   onClose: () => void; onDelete: () => void; onDuplicate: () => void;
   onSplit: () => void; onOpenPianoRoll?: () => void;
+  onNormalize?: () => void; onReverse?: () => void;
+  onAddFadeIn?: () => void; onAddFadeOut?: () => void; onResetEdits?: () => void;
 }) {
   return (
     <div style={{
@@ -752,11 +990,21 @@ function ClipContextMenu({ x, y, clipType, onClose, onDelete, onDuplicate, onSpl
       border: '1px solid rgba(255,255,255,0.1)',
       borderRadius: 10,
       boxShadow: '0 12px 38px rgba(0,0,0,0.78), 0 0 0 1px rgba(255,255,255,0.04), 0 0 24px rgba(139,127,248,0.12)',
-      minWidth: 152, padding: '4px 0', zIndex: 50,
+      minWidth: 164, padding: '4px 0', zIndex: 50,
     }}>
       {onOpenPianoRoll && <CtxItem label="Open Piano Roll" onClick={onOpenPianoRoll} icon="⊞" />}
       <CtxItem label="Duplicate  Ctrl+D" onClick={onDuplicate} icon="⧉" />
       {clipType === 'audio' && <CtxItem label="Split at Playhead" onClick={onSplit} icon="⊘" />}
+      {clipType === 'audio' && (
+        <>
+          <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '3px 0' }} />
+          <CtxItem label="Normalize Clip" onClick={onNormalize!} icon="◈" />
+          <CtxItem label="Reverse Clip" onClick={onReverse!} icon="⇄" />
+          <CtxItem label="Add Fade In" onClick={onAddFadeIn!} icon="◁" />
+          <CtxItem label="Add Fade Out" onClick={onAddFadeOut!} icon="▷" />
+          <CtxItem label="Reset Edits" onClick={onResetEdits!} icon="↺" />
+        </>
+      )}
       <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '3px 0' }} />
       <CtxItem label="Delete" onClick={onDelete} danger icon="✕" />
     </div>

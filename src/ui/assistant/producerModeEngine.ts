@@ -64,6 +64,38 @@ export function analyzeProducerProjectWithMeters(
   if (!summary.hasMutedOrSoloedTracks) suggestions.push(PRODUCER_MODE_SUGGESTIONS.muteSolo);
   if (!summary.savedProject) suggestions.push(PRODUCER_MODE_SUGGESTIONS.save);
   if (!summary.exportedAudio) suggestions.push(PRODUCER_MODE_SUGGESTIONS.export);
+  // Clip editing suggestions
+  if (project.audioClips.length > 0) {
+    const clipsWithoutFades = project.audioClips.filter(
+      (c) => !c.edit?.fadeInSeconds && !c.edit?.fadeOutSeconds
+    );
+    if (clipsWithoutFades.length > 0) {
+      suggestions.push(PRODUCER_MODE_SUGGESTIONS.addFades);
+    }
+
+    const highGainClips = project.audioClips.filter(
+      (c) => (c.edit?.gain ?? 1) > 1.5
+    );
+    if (highGainClips.length > 0) {
+      suggestions.push(PRODUCER_MODE_SUGGESTIONS.highClipGain);
+    }
+
+    const assetIdCounts = project.audioClips.reduce<Record<string, number>>((acc, c) => {
+      acc[c.assetId] = (acc[c.assetId] ?? 0) + 1;
+      return acc;
+    }, {});
+    if (Object.values(assetIdCounts).some((count) => count > 1)) {
+      suggestions.push(PRODUCER_MODE_SUGGESTIONS.repeatedClip);
+    }
+
+    const hasSelectedClip =
+      project.audioClips.some((c) => c.selected) ||
+      project.midiClips.some((c) => c.selected);
+    if (!hasSelectedClip) {
+      suggestions.push(PRODUCER_MODE_SUGGESTIONS.selectClipToEdit);
+    }
+  }
+
   if (meterContext) {
     const meterLevels = Object.values(meterContext.snapshot.levels);
     const clippingChannels = meterLevels.filter((level) => level.channelId !== 'master' && level.clipping);

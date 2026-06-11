@@ -54,6 +54,10 @@ Clicking a suggestion highlights the relevant studio region.
 - No mute/solo usage: use mute/solo to isolate mix problems.
 - Unsaved project: save before experimenting.
 - Not exported: export a WAV test bounce when the loop feels solid.
+- Audio clips without fades: suggest adding fade in/out to avoid clicks.
+- Clip gain too high (> 1.5×): suggest lowering clip gain.
+- Same asset used multiple times: suggest duplicate/variation workflow.
+- No selected clip: suggest selecting a clip to open the Clip Inspector.
 
 ## Guardrails
 

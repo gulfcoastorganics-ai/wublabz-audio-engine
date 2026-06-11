@@ -79,6 +79,79 @@ type KnowledgeEntry = {
 };
 
 const KNOWLEDGE: KnowledgeEntry[] = [
+  // ── Clip editing (checked first: specific multi-word keywords that would
+  //    otherwise be caught by generic entries like 'audio' or 'play') ──────
+  {
+    id: 'split-clip',
+    title: 'Split a Clip',
+    body: 'Split a clip at the playhead position by right-clicking it and choosing Split at Playhead. This creates two clips you can move independently.',
+    keywords: ['split clip', 'cut clip', 'split at playhead', 'divide clip', 'how do i split'],
+    highlightTarget: 'clip',
+    actions: [{ type: 'focusArrangement' }],
+    steps: [
+      'Move the playhead to where you want to cut.',
+      'Right-click the audio clip in the arrangement.',
+      'Choose "Split at Playhead".',
+      'Two clips are created at the cut point.',
+    ],
+  },
+  {
+    id: 'fade-clip',
+    title: 'Fade a Clip',
+    body: 'Fades ramp the volume at the start or end of a clip to avoid clicks and pops. Right-click a clip and choose Add Fade In or Add Fade Out, or adjust the values in the Clip Inspector.',
+    keywords: ['fade clip', 'fade in', 'fade out', 'how do i fade', 'add fade', 'clip fade'],
+    highlightTarget: 'clip',
+    actions: [{ type: 'focusArrangement' }],
+    steps: [
+      'Select an audio clip.',
+      'Right-click and choose "Add Fade In" or "Add Fade Out".',
+      'A dark gradient appears at the clip edge showing the fade.',
+      'Use the Clip Inspector to set a precise fade duration in seconds.',
+    ],
+  },
+  {
+    id: 'normalize',
+    title: 'What Does Normalize Mean?',
+    body: 'Normalize raises a clip to the maximum possible level without clipping. It makes quiet clips louder so they sit better in the mix. Right-click a clip and choose Normalize Clip.',
+    keywords: ['normalize', 'normalise', 'what does normalize mean', 'clip normalize', 'normalize clip'],
+    highlightTarget: 'clip',
+    actions: [{ type: 'focusArrangement' }],
+    steps: [
+      'Select an audio clip.',
+      'Right-click and choose "Normalize Clip".',
+      'The NRM badge appears on the clip.',
+      'The clip will play at its maximum level without distorting.',
+    ],
+  },
+  {
+    id: 'reverse-audio',
+    title: 'Reverse Audio',
+    body: 'Reversing a clip plays it backwards, which creates interesting textures and effects. Right-click a clip and choose Reverse Clip, or toggle the Reverse control in the Clip Inspector.',
+    keywords: ['reverse audio', 'reverse clip', 'backwards', 'play backwards', 'how do i reverse', 'reverse'],
+    highlightTarget: 'clip',
+    actions: [{ type: 'focusArrangement' }],
+    steps: [
+      'Select an audio clip.',
+      'Right-click and choose "Reverse Clip".',
+      'The REV badge appears on the clip.',
+      'Toggle it again to restore the original direction.',
+    ],
+  },
+  {
+    id: 'duplicate-clip',
+    title: 'Duplicate a Clip',
+    body: 'Duplicate creates a copy of the selected clip placed right after the original. Use Ctrl+D or right-click and choose Duplicate.',
+    keywords: ['duplicate clip', 'copy clip', 'how do i duplicate', 'ctrl d', 'clone clip'],
+    highlightTarget: 'clip',
+    actions: [{ type: 'focusArrangement' }],
+    steps: [
+      'Click a clip to select it.',
+      'Press Ctrl+D (or Cmd+D on Mac), or right-click and choose "Duplicate".',
+      'A copy appears right after the original.',
+      'Drag the duplicate to where you need it.',
+    ],
+  },
+  // ── General studio knowledge ───────────────────────────────────────────────
   {
     id: 'transport',
     title: 'Transport',
@@ -304,8 +377,8 @@ const KNOWLEDGE: KnowledgeEntry[] = [
 export const WUB_GUIDE_FALLBACK_RESPONSE: WubGuideResponse = {
   id: 'fallback',
   title: 'Try a Studio Question',
-  body: 'I can help with importing audio, playback, BPM, the arrangement, mixer, piano roll, saving, exporting, snap, loop, mute, solo, and what to do first.',
-  steps: ['Choose a quick prompt below.', 'Or ask a short question like "How do I export WAV?"'],
+  body: 'I can help with importing audio, playback, BPM, the arrangement, mixer, piano roll, saving, exporting, snap, loop, mute, solo, clip editing (split, fade, normalize, reverse, duplicate), and what to do first.',
+  steps: ['Choose a quick prompt below.', 'Or ask a short question like "How do I fade a clip?"'],
   highlightTarget: 'transport',
   quickActions: WUB_GUIDE_QUICK_ACTIONS,
 };
