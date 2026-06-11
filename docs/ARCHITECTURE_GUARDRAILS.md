@@ -24,6 +24,8 @@ The concrete event type may be `TimelineEventV2[]` in current runtime modules, b
 - Metering may observe existing bus output, but it must remain read-only and cannot create new playback paths.
 - No raw-audio upload to Gemini or any remote AI provider.
 - No API keys in source, logs, docs examples, or client-exposed state.
+- Clip edit processing must use Float32Array operations only. No AudioContext manipulation in edit renderers.
+- Clip edit parameters must flow into the canonical pipeline via event payload — never via out-of-band Player instantiation or store subscriptions.
 
 ## Layer Ownership
 
@@ -50,6 +52,15 @@ Timeline events are the deterministic playback contract. Higher-level producer, 
 ### Metering
 
 The meter registry is a visual consumer of existing playback state. It may read bus levels or deterministic project/playhead state, but it must not route audio, schedule playback, or replace the canonical playback path.
+
+### Clip Edit Rendering
+
+Clip edits (gain, reverse, fade, normalize) are applied as follows:
+
+- **Live playback**: `projectToTimelineEvents` includes `clipEdit` and `normalizedGain` in the event payload. `ToneAdapter.triggerEventPlayback` reads these and sets Tone.js Player properties (`reverse`, `fadeIn`, `fadeOut`, `volume.value`). No AudioContext operations. No new audio nodes.
+- **WAV export**: `OfflineRenderService.mixClipInto` calls `renderClipEdits(peaks, edit, duration)`. This is a pure Float32Array operation with no AudioContext dependency.
+
+The edit renderer (`src/audio/rendering/clipEditRenderer.ts`) is a pure function module. It must not import Tone.js, create AudioContext, or schedule playback.
 
 ## Disallowed Patterns
 

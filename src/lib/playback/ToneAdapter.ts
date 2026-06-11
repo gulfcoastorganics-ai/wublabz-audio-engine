@@ -48,6 +48,9 @@ export interface TonePlayerLike {
   buffer?: unknown;
   volume?: { value: number };
   playbackRate?: number;
+  reverse?: boolean;
+  fadeIn?: number;
+  fadeOut?: number;
 }
 
 export interface ToneLikeRuntime {
@@ -496,6 +499,11 @@ export class ToneJsAdapter {
         player.playbackRate = event.payload.playbackRate;
       }
 
+      const clipEdit = event.payload?.clipEdit;
+      if (clipEdit && typeof clipEdit === 'object') {
+        applyClipEditToPlayer(player, clipEdit as Record<string, unknown>, event.payload as Record<string, unknown>);
+      }
+
       this.activePlayers.set(event.id, player);
 
       const effectivePlaybackRate = typeof event.payload?.playbackRate === 'number' ? event.payload.playbackRate : 1;
@@ -717,4 +725,30 @@ function estimateBufferByteLength(buffer: ToneAudioBufferLike): number {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function gainToDb(gain: number): number {
+  return 20 * Math.log10(Math.max(gain, 0.0001));
+}
+
+function applyClipEditToPlayer(
+  player: TonePlayerLike,
+  edit: Record<string, unknown>,
+  payload: Record<string, unknown>
+): void {
+  const editGain = typeof edit.gain === 'number' ? edit.gain : 1;
+  const normalizedGain = typeof payload.normalizedGain === 'number' ? payload.normalizedGain : 1;
+  const combinedGain = editGain * normalizedGain;
+  if (combinedGain !== 1 && player.volume) {
+    player.volume.value = (player.volume.value ?? 0) + gainToDb(combinedGain);
+  }
+  if (edit.reverse && 'reverse' in player) {
+    player.reverse = true;
+  }
+  if (typeof edit.fadeInSeconds === 'number' && 'fadeIn' in player) {
+    player.fadeIn = edit.fadeInSeconds;
+  }
+  if (typeof edit.fadeOutSeconds === 'number' && 'fadeOut' in player) {
+    player.fadeOut = edit.fadeOutSeconds;
+  }
 }

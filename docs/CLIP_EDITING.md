@@ -52,7 +52,9 @@ The inspector shows:
 | Reverse | Toggle to play the clip in reverse |
 | Normalize | Toggle to treat the clip as normalized |
 
-All inspector edits update project state only. The audio engine reads these values from `TimelineEvents` during playback.
+Inspector edits update project state. The audio engine applies them during playback (via Tone.js Player properties) and during WAV export (via peaks processing in `OfflineRenderService`).
+
+The inspector also shows a **render status badge**: "Original" when no edits are active, "Processed" when any edit is applied.
 
 ## Visual Feedback
 
@@ -64,18 +66,28 @@ Clips display indicators when edit properties are active:
 - **Fade-in overlay** — Dark gradient on the left edge of the clip body.
 - **Fade-out overlay** — Dark gradient on the right edge of the clip body.
 - **Selected clip glow** — Purple glow border when the clip is selected.
+- **Render status badge** — "Original" or "Processed" shown in the Clip Inspector.
+
+## Audio Rendering
+
+Clip edits are applied in real time during playback and rendered accurately into WAV exports.
+
+**Live playback**: Edits flow through the canonical pipeline via event payload (`clipEdit`, `normalizedGain`). `ToneAdapter` applies them as Tone.js Player properties — no new audio nodes or AudioContext manipulation.
+
+**WAV export**: `OfflineRenderService` calls `renderClipEdits(peaks, edit, duration)` in `mixClipInto` to process waveform peaks before PCM encoding.
+
+**Processing pipeline** (deterministic order): normalize → gain → reverse → fade in → fade out.
+
+See [docs/AUDIO_EDIT_RENDERING.md](AUDIO_EDIT_RENDERING.md) for full architecture details.
 
 ## Architecture Note
 
-All clip edits are UI/state-level. They are stored in `project.audioClips[n].edit` and flow into `TimelineEvents` during the project-to-timeline conversion step. The following engine components are not modified by clip editing features:
+All clip edits are non-destructive. Original audio files are never modified. Edits are stored in `project.audioClips[n].edit` and flow into `TimelineEvents` during the project-to-timeline conversion step.
 
-- `EventScheduler`
-- `TimelineRouter`
-- `ToneAdapter`
-- `BusGraph`
-- The canonical `TimelineEvent` playback flow
+**Canonical playback pipeline is preserved:**
+> TimelineEvent[] → EventScheduler → TimelineRouter → ToneAdapter → BusGraph
 
-This preserves deterministic playback behavior while exposing full edit controls to the user.
+No direct scheduling, no side audio paths, no rogue AudioContext usage.
 
 ## Migration
 

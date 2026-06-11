@@ -94,6 +94,22 @@ export function analyzeProducerProjectWithMeters(
     if (!hasSelectedClip) {
       suggestions.push(PRODUCER_MODE_SUGGESTIONS.selectClipToEdit);
     }
+
+    const normalizeGainClips = project.audioClips.filter(
+      (c) => c.edit?.normalized && (c.edit?.gain ?? 1) > 1.5
+    );
+    if (normalizeGainClips.length > 0) {
+      suggestions.push(PRODUCER_MODE_SUGGESTIONS.normalizeGainHeadroom);
+    }
+
+    const fadesExceedClips = project.audioClips.filter((c) => {
+      if (!c.edit?.fadeInSeconds && !c.edit?.fadeOutSeconds) return false;
+      const clipDuration = c.endTime - c.startTime;
+      return (c.edit?.fadeInSeconds ?? 0) + (c.edit?.fadeOutSeconds ?? 0) > clipDuration;
+    });
+    if (fadesExceedClips.length > 0) {
+      suggestions.push(PRODUCER_MODE_SUGGESTIONS.fadesExceedDuration);
+    }
   }
 
   if (meterContext) {

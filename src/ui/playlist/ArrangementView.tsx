@@ -846,6 +846,8 @@ function ClipInspector({
   const fadeOut = edit.fadeOutSeconds ?? 0;
   const reverse = edit.reverse ?? false;
   const normalized = edit.normalized ?? false;
+  const hasActiveEdits = clip.edit && Object.keys(clip.edit).length > 0;
+  const renderStatus = hasActiveEdits ? 'Processed' : 'Original';
 
   return (
     <div
@@ -863,6 +865,18 @@ function ClipInspector({
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
       }}>
         {clip.name}
+      </span>
+      <span
+        aria-label="Render status"
+        style={{
+          fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 3,
+          background: hasActiveEdits ? 'rgba(139,127,248,0.25)' : 'rgba(60,60,80,0.3)',
+          color: hasActiveEdits ? 'rgba(180,170,255,0.9)' : 'rgba(140,140,160,0.6)',
+          border: `1px solid ${hasActiveEdits ? 'rgba(139,127,248,0.4)' : 'rgba(80,80,100,0.3)'}`,
+          letterSpacing: '0.04em',
+        }}
+      >
+        {renderStatus}
       </span>
       <InspField label="Start" value={`${clip.startTime.toFixed(2)}s`} />
       <InspField label="End" value={`${clip.endTime.toFixed(2)}s`} />

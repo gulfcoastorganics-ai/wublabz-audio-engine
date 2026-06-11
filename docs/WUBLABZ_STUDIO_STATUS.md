@@ -141,10 +141,10 @@ See [docs/CLIP_EDITING.md](CLIP_EDITING.md) for full clip editing documentation.
 
 ## Testing Status
 
-Latest documented verification after the Beginner Mode/WubGuide and metering pass:
+Latest documented verification after the audio edit rendering pass:
 
-- 34 test files passing.
-- 155 tests passing.
+- 39 test files passing.
+- 262 tests passing.
 - Typecheck passing.
 - Lint passing.
 - Build passing.
@@ -159,12 +159,22 @@ NODE_OPTIONS=--max-old-space-size=2048 npm run build
 npm run dev
 ```
 
+## Audio Edit Rendering
+
+Non-destructive clip edits (gain, reverse, fade in, fade out, normalize) are now applied to both live playback and WAV export:
+
+- **Live playback**: Edits flow through the canonical pipeline via event payload. `ToneAdapter` applies them as native Tone.js Player properties (`reverse`, `fadeIn`, `fadeOut`, `volume.value`). No AudioContext manipulation.
+- **WAV export**: `OfflineRenderService.mixClipInto` calls `renderClipEdits` to process waveform peaks before encoding.
+- **Clip Inspector**: Shows "Original" or "Processed" status badge based on active edits.
+- **Processing pipeline** (deterministic order): normalize → gain → reverse → fade in → fade out.
+
+See [docs/AUDIO_EDIT_RENDERING.md](AUDIO_EDIT_RENDERING.md) for architecture details.
+
 ## Recommended Roadmap
 
 Next work should continue in phases:
 
 - Responsive resizing and dockable panels.
-- Real audio clip editing refinements.
 - MIDI piano roll improvements.
 - Mixer metering refinement and better master gain staging.
 - Stem import/separation.

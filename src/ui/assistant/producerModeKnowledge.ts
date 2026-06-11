@@ -152,4 +152,22 @@ export const PRODUCER_MODE_SUGGESTIONS = {
     actionLabel: 'Show Arrangement',
     guideTarget: 'clip',
   },
+  normalizeGainHeadroom: {
+    id: 'normalize-gain-headroom',
+    category: 'mix',
+    priority: 'high',
+    title: 'Normalize + High Gain',
+    body: 'A clip has Normalize enabled plus a gain above 1.5×. Normalize already boosts to 0 dBFS — adding extra gain on top will cause clipping before the mixer. Lower the clip gain or remove Normalize.',
+    actionLabel: 'Show Arrangement',
+    guideTarget: 'clip',
+  },
+  fadesExceedDuration: {
+    id: 'fades-exceed-duration',
+    category: 'mix',
+    priority: 'high',
+    title: 'Fades Exceed Clip Duration',
+    body: 'A clip has overlapping fade in and fade out that together exceed the clip length. The fades will cancel each other out in the middle. Shorten the fade lengths so they fit within the clip.',
+    actionLabel: 'Show Arrangement',
+    guideTarget: 'clip',
+  },
 } satisfies Record<string, ProducerSuggestion>;
