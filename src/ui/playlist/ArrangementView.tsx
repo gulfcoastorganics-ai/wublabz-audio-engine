@@ -1,19 +1,18 @@
 import React, {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
 import { useStudioStore } from '../../state/useStudioStore.js';
-import type { AudioClip, MidiClip, Track } from '../../lib/project/projectSchema.js';
+import type { AudioClip, AudioAsset, MidiClip, Track } from '../../lib/project/projectSchema.js';
 
-const TRACK_HEADER_WIDTH = 180;
-const TRACK_HEIGHT = 56;
-const RULER_HEIGHT = 28;
-const MIN_CLIP_WIDTH = 4; // pixels
+const TRACK_HEADER_WIDTH = 176;
+const TRACK_HEIGHT = 58;
+const RULER_HEIGHT = 26;
+const MIN_CLIP_WIDTH = 4;
 
-// ─── Drag state (mutable ref — never triggers re-render during drag) ─────────
+// ─── Drag state ───────────────────────────────────────────────────────────────
 
 interface DragState {
   active: boolean;
@@ -30,21 +29,10 @@ interface DragState {
   containerTop: number;
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function beatsToSeconds(beats: number, bpm: number): number {
   return (beats * 60) / bpm;
-}
-
-function formatRulerLabel(seconds: number, bpm: number, bpb: number): string {
-  const totalBeats = (seconds * bpm) / 60;
-  const bar = Math.floor(totalBeats / bpb) + 1;
-  return `${bar}`;
-}
-
-function clipColor(clip: AudioClip | MidiClip, track: Track | undefined): string {
-  if (track?.color) return track.color;
-  return clip.type === 'audio' ? 'var(--color-daw-clip-audio)' : 'var(--color-daw-clip-midi)';
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -55,9 +43,7 @@ export function ArrangementView() {
     zoom,
     scrollLeft,
     selectedClipId,
-    pianoRollClipId,
     position,
-    isPlaying,
     snapEnabled,
     snapGrid,
     setZoom,
@@ -72,7 +58,6 @@ export function ArrangementView() {
     addTrack,
     addMidiClip,
     importFile,
-    setStatus,
   } = useStudioStore();
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -92,7 +77,7 @@ export function ArrangementView() {
     containerTop: 0,
   });
   const dragOverlayRef = useRef<HTMLDivElement | null>(null);
-  const [dragTick, setDragTick] = useState(0); // force re-render on drag commit
+  const [, setDragTick] = useState(0);
 
   const pxPerSec = zoom;
   const tracks = [...project.tracks].sort((a, b) => a.order - b.order);
@@ -112,7 +97,7 @@ export function ArrangementView() {
     return Math.round(t / snapGrid) * snapGrid;
   }
 
-  // ─── Ruler ticks ──────────────────────────────────────────────────────────
+  // ─── Ruler ticks ─────────────────────────────────────────────────────────
 
   const bpb = project.timeSignature.beatsPerBar;
   const bpm = project.bpm;
@@ -129,17 +114,11 @@ export function ArrangementView() {
     for (let b = startBar; b <= endBar; b++) {
       const t = b * barDurationSec;
       const x = secToPx(t) - scrollLeft;
-      rulerTicks.push({
-        x,
-        label: String(b + 1),
-        isBar: true,
-      });
-      // Beat subdivisions
-      if (barWidthPx > 60) {
+      rulerTicks.push({ x, label: String(b + 1), isBar: true });
+      if (barWidthPx > 56) {
         for (let beat = 1; beat < bpb; beat++) {
-          const beatT = t + beatsToSeconds(beat, bpm);
           rulerTicks.push({
-            x: secToPx(beatT) - scrollLeft,
+            x: secToPx(t + beatsToSeconds(beat, bpm)) - scrollLeft,
             label: '',
             isBar: false,
           });
@@ -148,16 +127,12 @@ export function ArrangementView() {
     }
   }
 
-  // ─── Playhead position ────────────────────────────────────────────────────
-
   const playheadX = secToPx(position) - scrollLeft;
 
-  // ─── Scroll handler ───────────────────────────────────────────────────────
+  // ─── Scroll ───────────────────────────────────────────────────────────────
 
   const handleScroll = useCallback(
-    (e: React.UIEvent<HTMLDivElement>) => {
-      setScrollLeft(e.currentTarget.scrollLeft);
-    },
+    (e: React.UIEvent<HTMLDivElement>) => setScrollLeft(e.currentTarget.scrollLeft),
     [setScrollLeft]
   );
 
@@ -167,8 +142,7 @@ export function ArrangementView() {
     (e: WheelEvent) => {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
-        const delta = e.deltaY > 0 ? 0.85 : 1.18;
-        setZoom(zoom * delta);
+        setZoom(zoom * (e.deltaY > 0 ? 0.85 : 1.18));
       }
     },
     [zoom, setZoom]
@@ -181,7 +155,7 @@ export function ArrangementView() {
     return () => el.removeEventListener('wheel', handleWheel);
   }, [handleWheel]);
 
-  // ─── Drag: pointer down on clip ───────────────────────────────────────────
+  // ─── Drag: pointer down ───────────────────────────────────────────────────
 
   function startClipDrag(
     e: React.PointerEvent<HTMLDivElement>,
@@ -210,34 +184,23 @@ export function ArrangementView() {
     selectClip(clip.id);
   }
 
-  // ─── Drag: pointer move ───────────────────────────────────────────────────
-
   const handlePointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       const drag = dragRef.current;
       if (!drag.active) return;
-
       const dx = e.clientX - drag.startClientX;
       const dy = e.clientY - drag.startClientY;
-      const dtSec = pxToSec(dx);
-
-      // Find the overlay element for this clip and move it visually
       const overlay = dragOverlayRef.current;
       if (!overlay) return;
-
       if (drag.type === 'move') {
         overlay.style.transform = `translate(${dx}px, ${Math.round(dy / TRACK_HEIGHT) * TRACK_HEIGHT}px)`;
       } else {
-        // Resize: just change width
-        const newEnd = Math.max(drag.originalStart + 0.1, drag.originalEnd + dtSec);
-        const newWidth = secToPx(newEnd - drag.originalStart);
-        overlay.style.width = `${Math.max(MIN_CLIP_WIDTH, newWidth)}px`;
+        const newEnd = Math.max(drag.originalStart + 0.1, drag.originalEnd + pxToSec(dx));
+        overlay.style.width = `${Math.max(MIN_CLIP_WIDTH, secToPx(newEnd - drag.originalStart))}px`;
       }
     },
     [pxToSec, secToPx]
   );
-
-  // ─── Drag: pointer up ─────────────────────────────────────────────────────
 
   const handlePointerUp = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -246,29 +209,24 @@ export function ArrangementView() {
       drag.active = false;
       document.body.classList.remove('drag-active');
       dragOverlayRef.current = null;
-
       const dx = e.clientX - drag.startClientX;
       const dy = e.clientY - drag.startClientY;
-      const dtSec = pxToSec(dx);
       const trackDelta = Math.round(dy / TRACK_HEIGHT);
-
       if (drag.type === 'move') {
-        const newStart = snap(Math.max(0, drag.originalStart + dtSec));
-        // Resolve target track
+        const newStart = snap(Math.max(0, drag.originalStart + pxToSec(dx)));
         const newTrackIndex = Math.max(0, Math.min(tracks.length - 1, drag.trackIndex + trackDelta));
         const newTrack = tracks[newTrackIndex];
         const newTrackId = newTrack?.id ?? drag.originalTrackId;
         moveClip(drag.clipId, newStart, newTrackId !== drag.originalTrackId ? newTrackId : undefined);
       } else {
-        const newEnd = snap(Math.max(drag.originalStart + 0.1, drag.originalEnd + dtSec));
-        resizeClip(drag.clipId, newEnd);
+        resizeClip(drag.clipId, snap(Math.max(drag.originalStart + 0.1, drag.originalEnd + pxToSec(dx))));
       }
       setDragTick((t) => t + 1);
     },
     [pxToSec, snap, tracks, moveClip, resizeClip]
   );
 
-  // ─── Timeline click: seek ─────────────────────────────────────────────────
+  // ─── Ruler click: seek ────────────────────────────────────────────────────
 
   function handleRulerClick(e: React.MouseEvent<HTMLDivElement>) {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -276,14 +234,12 @@ export function ArrangementView() {
     useStudioStore.getState().seek(pxToSec(px));
   }
 
-  // ─── Drop audio files ─────────────────────────────────────────────────────
+  // ─── Drop audio ───────────────────────────────────────────────────────────
 
   function handleDrop(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault();
     for (const file of Array.from(e.dataTransfer.files)) {
-      if (file.type.startsWith('audio/')) {
-        void importFile(file);
-      }
+      if (file.type.startsWith('audio/')) void importFile(file);
     }
   }
 
@@ -310,13 +266,11 @@ export function ArrangementView() {
     return () => window.removeEventListener('keydown', handleKey);
   }, [deleteClip, duplicateClip]);
 
-  // ─── Context menu state ───────────────────────────────────────────────────
+  // ─── Context menu ─────────────────────────────────────────────────────────
 
   const [ctxMenu, setCtxMenu] = useState<{
-    x: number;
-    y: number;
-    clipId: string;
-    clipType: 'audio' | 'midi';
+    x: number; y: number;
+    clipId: string; clipType: 'audio' | 'midi';
   } | null>(null);
 
   useEffect(() => {
@@ -326,37 +280,36 @@ export function ArrangementView() {
     return () => window.removeEventListener('pointerdown', close);
   }, [ctxMenu]);
 
-  // ─── Render ───────────────────────────────────────────────────────────────
+  const loopState = useStudioStore.getState();
 
   return (
     <div
       ref={containerRef}
       className="flex flex-col flex-1 overflow-hidden"
-      style={{ background: 'var(--color-daw-bg)' }}
+      style={{ background: '#04060e' }}
       onDragOver={(e) => e.preventDefault()}
       onDrop={handleDrop}
     >
-      {/* Arrangement body: track headers + scrollable lane area */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Track header column */}
+        {/* ── Track header column ──────────────────────────────────────── */}
         <div
           className="flex flex-col shrink-0 overflow-y-auto"
           style={{
             width: TRACK_HEADER_WIDTH,
-            background: 'var(--color-daw-track-header)',
-            borderRight: '1px solid var(--color-daw-border)',
+            background: 'rgba(6, 8, 20, 0.95)',
+            borderRight: '1px solid rgba(255,255,255,0.05)',
           }}
         >
           {/* Ruler spacer */}
           <div
-            className="shrink-0 flex items-center px-2"
+            className="shrink-0 flex items-center px-3"
             style={{
               height: RULER_HEIGHT,
-              borderBottom: '1px solid var(--color-daw-border)',
-              background: 'var(--color-daw-ruler)',
+              borderBottom: '1px solid rgba(255,255,255,0.04)',
+              background: 'rgba(3,5,16,0.98)',
             }}
           >
-            <span className="text-xs" style={{ color: 'var(--color-daw-text-dim)' }}>
+            <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.1em', color: 'rgba(255,255,255,0.18)', textTransform: 'uppercase' }}>
               Bars
             </span>
           </div>
@@ -374,26 +327,45 @@ export function ArrangementView() {
             />
           ))}
 
+          {/* Empty state */}
+          {tracks.length === 0 && (
+            <div style={{ padding: '16px 12px', color: 'rgba(255,255,255,0.18)', fontSize: 11, lineHeight: 1.6, textAlign: 'center' }}>
+              No tracks yet.<br />Add one below.
+            </div>
+          )}
+
           {/* Add track buttons */}
-          <div className="flex gap-1 p-2 mt-1">
+          <div style={{ display: 'flex', gap: 4, padding: '8px 8px 10px' }}>
             <button
               onClick={() => addTrack('audio')}
-              className="flex-1 py-1 rounded text-xs hover:opacity-80"
-              style={{ background: 'var(--color-daw-border-bright)', color: 'var(--color-daw-text-dim)' }}
+              style={{
+                flex: 1, height: 24,
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.07)',
+                borderRadius: 4, color: 'rgba(255,255,255,0.35)',
+                fontSize: 10, fontWeight: 500, cursor: 'pointer',
+                transition: 'background 0.12s, color 0.12s',
+              }}
             >
               + Audio
             </button>
             <button
               onClick={() => addTrack('midi')}
-              className="flex-1 py-1 rounded text-xs hover:opacity-80"
-              style={{ background: 'var(--color-daw-border-bright)', color: 'var(--color-daw-text-dim)' }}
+              style={{
+                flex: 1, height: 24,
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.07)',
+                borderRadius: 4, color: 'rgba(255,255,255,0.35)',
+                fontSize: 10, fontWeight: 500, cursor: 'pointer',
+                transition: 'background 0.12s, color 0.12s',
+              }}
             >
               + MIDI
             </button>
           </div>
         </div>
 
-        {/* Scrollable lane area */}
+        {/* ── Scrollable lane area ─────────────────────────────────────── */}
         <div
           ref={laneAreaRef}
           className="flex-1 overflow-auto relative"
@@ -407,8 +379,8 @@ export function ArrangementView() {
               className="sticky top-0 z-20 cursor-pointer"
               style={{
                 height: RULER_HEIGHT,
-                background: 'var(--color-daw-ruler)',
-                borderBottom: '1px solid var(--color-daw-border)',
+                background: 'linear-gradient(180deg, rgba(3,5,16,0.99) 0%, rgba(5,7,20,0.97) 100%)',
+                borderBottom: '1px solid rgba(139,127,248,0.12)',
               }}
               onClick={handleRulerClick}
             >
@@ -421,22 +393,23 @@ export function ArrangementView() {
                   <div
                     style={{
                       width: 1,
-                      height: tick.isBar ? 12 : 6,
+                      height: tick.isBar ? 14 : 6,
                       background: tick.isBar
-                        ? 'var(--color-daw-border-bright)'
-                        : 'var(--color-daw-border)',
-                      marginTop: tick.isBar ? 0 : 6,
+                        ? 'rgba(139,127,248,0.4)'
+                        : 'rgba(255,255,255,0.1)',
+                      marginTop: tick.isBar ? 0 : 8,
                     }}
                   />
                   {tick.isBar && tick.label && (
                     <span
-                      className="text-xs pl-1"
                       style={{
-                        color: 'var(--color-daw-text-dim)',
-                        fontSize: 10,
-                        lineHeight: '14px',
-                        marginTop: 2,
+                        fontSize: 9,
+                        fontWeight: 600,
+                        color: 'rgba(180,172,255,0.55)',
+                        paddingLeft: 4,
+                        marginTop: 1,
                         userSelect: 'none',
+                        letterSpacing: '0.04em',
                       }}
                     >
                       {tick.label}
@@ -445,16 +418,16 @@ export function ArrangementView() {
                 </div>
               ))}
 
-              {/* Loop region on ruler */}
-              {useStudioStore.getState().loopEnabled && (
+              {/* Loop region tint */}
+              {loopState.loopEnabled && (
                 <div
-                  className="absolute top-0 bottom-0 opacity-20"
+                  className="absolute top-0 bottom-0"
                   style={{
-                    left: secToPx(useStudioStore.getState().loopStart) - scrollLeft,
-                    width: secToPx(
-                      useStudioStore.getState().loopEnd - useStudioStore.getState().loopStart
-                    ),
-                    background: 'var(--color-daw-accent)',
+                    left: secToPx(loopState.loopStart) - scrollLeft,
+                    width: secToPx(loopState.loopEnd - loopState.loopStart),
+                    background: 'rgba(139,127,248,0.15)',
+                    borderLeft: '1px solid rgba(139,127,248,0.5)',
+                    borderRight: '1px solid rgba(139,127,248,0.5)',
                   }}
                 />
               )}
@@ -463,19 +436,17 @@ export function ArrangementView() {
             {/* Track lanes */}
             {tracks.map((track, trackIndex) => {
               const trackClips = allClips.filter((c) => c.trackId === track.id);
+              const isAlt = trackIndex % 2 === 1;
               return (
                 <div
                   key={track.id}
                   className="relative"
                   style={{
                     height: TRACK_HEIGHT,
-                    borderBottom: '1px solid var(--color-daw-border)',
-                    background: trackIndex % 2 === 0
-                      ? 'var(--color-daw-track-lane)'
-                      : 'var(--color-daw-grid)',
+                    borderBottom: '1px solid rgba(255,255,255,0.035)',
+                    background: isAlt ? 'rgba(8,10,22,0.9)' : 'rgba(5,7,16,0.95)',
                   }}
                   onDoubleClick={(e) => {
-                    // Double-click on empty lane area: create MIDI clip
                     if ((e.target as HTMLElement).classList.contains('lane-bg')) {
                       const rect = laneAreaRef.current!.getBoundingClientRect();
                       const px = e.clientX - rect.left + (laneAreaRef.current?.scrollLeft ?? 0);
@@ -487,35 +458,30 @@ export function ArrangementView() {
                     }
                   }}
                 >
-                  {/* Grid lines (bar lines) */}
+                  {/* Bar grid lines */}
                   <div className="absolute inset-0 pointer-events-none lane-bg">
-                    {rulerTicks
-                      .filter((t) => t.isBar)
-                      .map((tick, i) => (
-                        <div
-                          key={i}
-                          className="absolute top-0 bottom-0"
-                          style={{
-                            left: tick.x,
-                            width: 1,
-                            background: 'var(--color-daw-grid-bar)',
-                          }}
-                        />
-                      ))}
+                    {rulerTicks.filter((t) => t.isBar).map((tick, i) => (
+                      <div
+                        key={i}
+                        className="absolute top-0 bottom-0"
+                        style={{
+                          left: tick.x,
+                          width: 1,
+                          background: 'rgba(139,127,248,0.06)',
+                        }}
+                      />
+                    ))}
                   </div>
 
                   {/* Clips */}
                   {trackClips.map((clip) => {
                     const left = secToPx(clip.startTime) - scrollLeft;
                     const width = Math.max(MIN_CLIP_WIDTH, secToPx(clip.endTime - clip.startTime));
-                    const isDragging =
-                      dragRef.current.active && dragRef.current.clipId === clip.id;
+                    const isDragging = dragRef.current.active && dragRef.current.clipId === clip.id;
                     const isSelected = selectedClipId === clip.id;
-                    const asset =
-                      clip.type === 'audio'
-                        ? project.audioAssets.find((a) => a.id === (clip as AudioClip).assetId)
-                        : null;
-
+                    const asset = clip.type === 'audio'
+                      ? project.audioAssets.find((a) => a.id === (clip as AudioClip).assetId)
+                      : null;
                     return (
                       <ClipBlock
                         key={clip.id}
@@ -530,9 +496,7 @@ export function ArrangementView() {
                         onMoveStart={(e) => startClipDrag(e, clip, 'move', trackIndex)}
                         onResizeStart={(e) => startClipDrag(e, clip, 'resize', trackIndex)}
                         onSelect={() => selectClip(clip.id)}
-                        onDoubleClick={() => {
-                          if (clip.type === 'midi') openPianoRoll(clip.id);
-                        }}
+                        onDoubleClick={() => { if (clip.type === 'midi') openPianoRoll(clip.id); }}
                         onContextMenu={(e) => {
                           e.preventDefault();
                           setCtxMenu({ x: e.clientX, y: e.clientY, clipId: clip.id, clipType: clip.type });
@@ -543,6 +507,20 @@ export function ArrangementView() {
                 </div>
               );
             })}
+
+            {/* Empty arrangement hint */}
+            {tracks.length === 0 && (
+              <div style={{
+                position: 'absolute', inset: 0,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                gap: 8, pointerEvents: 'none',
+                color: 'rgba(255,255,255,0.1)', fontSize: 13,
+              }}>
+                <span style={{ fontSize: 28, opacity: 0.3 }}>◈</span>
+                <span>Add a track to get started</span>
+                <span style={{ fontSize: 11, opacity: 0.6 }}>Drop audio files anywhere</span>
+              </div>
+            )}
           </div>
 
           {/* Playhead */}
@@ -552,8 +530,8 @@ export function ArrangementView() {
               style={{
                 left: playheadX,
                 width: 2,
-                background: 'var(--color-daw-playhead)',
-                boxShadow: '0 0 4px var(--color-daw-playhead)',
+                background: '#ff4444',
+                boxShadow: '0 0 8px 2px rgba(255,68,68,0.5), 0 0 2px rgba(255,68,68,0.8)',
               }}
             />
           )}
@@ -579,16 +557,20 @@ export function ArrangementView() {
         />
       )}
 
-      {/* Drop hint */}
+      {/* Hint bar */}
       <div
-        className="text-center py-1 text-xs shrink-0"
         style={{
-          color: 'var(--color-daw-text-dim)',
-          background: 'var(--color-daw-panel)',
-          borderTop: '1px solid var(--color-daw-border)',
+          padding: '4px 12px',
+          background: 'rgba(4,6,14,0.96)',
+          borderTop: '1px solid rgba(255,255,255,0.04)',
+          color: 'rgba(255,255,255,0.18)',
+          fontSize: 10,
+          letterSpacing: '0.02em',
+          userSelect: 'none',
+          flexShrink: 0,
         }}
       >
-        Drop audio files · Ctrl+Scroll to zoom · Double-click ruler to seek · Delete to remove clip
+        Drop audio · Ctrl+Scroll zoom · Click ruler to seek · Del to remove · Double-click MIDI lane to create clip
       </div>
     </div>
   );
@@ -596,59 +578,63 @@ export function ArrangementView() {
 
 // ─── TrackHeader ──────────────────────────────────────────────────────────────
 
-function TrackHeader({
-  track,
-  index,
-  onAddMidi,
-}: {
-  track: Track;
-  index: number;
-  onAddMidi: () => void;
+function TrackHeader({ track, index, onAddMidi }: {
+  track: Track; index: number; onAddMidi: () => void;
 }) {
   const { updateTrack } = useStudioStore();
 
   return (
     <div
-      className="flex items-center gap-1 px-2 shrink-0"
+      className="flex items-center gap-1.5 px-2 shrink-0"
       style={{
         height: TRACK_HEIGHT,
-        borderBottom: '1px solid var(--color-daw-border)',
-        background: 'var(--color-daw-track-header)',
+        borderBottom: '1px solid rgba(255,255,255,0.035)',
+        background: 'rgba(6,8,20,0.92)',
+        transition: 'background 0.1s',
       }}
     >
-      {/* Color bar */}
+      {/* Color accent bar */}
       <div
-        className="w-1 rounded-full self-stretch my-2"
-        style={{ background: track.color ?? 'var(--color-daw-accent)', minWidth: 3 }}
+        style={{
+          width: 3,
+          alignSelf: 'stretch',
+          margin: '8px 0',
+          borderRadius: 2,
+          background: track.color ?? 'var(--color-accent)',
+          boxShadow: `0 0 6px ${track.color ?? 'rgba(139,127,248,0.5)'}`,
+          flexShrink: 0,
+        }}
       />
 
-      {/* Name */}
-      <div className="flex-1 min-w-0">
-        <div
-          className="text-xs font-medium truncate"
-          style={{ color: 'var(--color-daw-text-bright)' }}
-        >
+      {/* Name + type */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontSize: 11, fontWeight: 600, color: '#d4d6f0',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
           {track.name}
         </div>
-        <div className="text-xs" style={{ color: 'var(--color-daw-text-dim)', fontSize: 10 }}>
+        <div style={{ fontSize: 9, fontWeight: 500, letterSpacing: '0.07em', color: 'rgba(255,255,255,0.22)', marginTop: 1 }}>
           {track.type.toUpperCase()}
         </div>
       </div>
 
       {/* Controls */}
-      <div className="flex flex-col gap-0.5">
-        <div className="flex gap-0.5">
-          <TrackButton
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-end' }}>
+        <div style={{ display: 'flex', gap: 2 }}>
+          <TrackBtn
             label="M"
             active={track.mute}
-            activeColor="var(--color-daw-amber)"
+            activeColor="rgba(245,166,35,0.9)"
+            activeBg="rgba(245,166,35,0.18)"
             title="Mute"
             onClick={() => updateTrack(track.id, { mute: !track.mute })}
           />
-          <TrackButton
+          <TrackBtn
             label="S"
             active={track.solo}
-            activeColor="var(--color-daw-green)"
+            activeColor="rgba(32,201,126,0.9)"
+            activeBg="rgba(32,201,126,0.15)"
             title="Solo"
             onClick={() => updateTrack(track.id, { solo: !track.solo })}
           />
@@ -656,14 +642,19 @@ function TrackHeader({
         {track.type === 'midi' && (
           <button
             onClick={onAddMidi}
-            className="text-xs px-1 rounded hover:opacity-80"
-            style={{
-              background: 'var(--color-daw-clip-midi)',
-              color: '#fff',
-              fontSize: 9,
-              lineHeight: '14px',
-            }}
             title="Add MIDI clip"
+            style={{
+              height: 14,
+              padding: '0 5px',
+              background: 'rgba(22, 110, 76, 0.45)',
+              border: '1px solid rgba(32,201,126,0.3)',
+              borderRadius: 3,
+              color: 'rgba(32,201,126,0.9)',
+              fontSize: 9,
+              fontWeight: 600,
+              cursor: 'pointer',
+              letterSpacing: '0.04em',
+            }}
           >
             +MIDI
           </button>
@@ -673,28 +664,26 @@ function TrackHeader({
   );
 }
 
-function TrackButton({
-  label,
-  active,
-  activeColor,
-  title,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  activeColor: string;
-  title: string;
-  onClick: () => void;
+function TrackBtn({ label, active, activeColor, activeBg, title, onClick }: {
+  label: string; active: boolean;
+  activeColor: string; activeBg: string;
+  title: string; onClick: () => void;
 }) {
   return (
     <button
       onClick={onClick}
       title={title}
-      className="w-5 h-5 flex items-center justify-center rounded text-xs font-bold hover:opacity-80"
       style={{
-        background: active ? activeColor : 'var(--color-daw-border-bright)',
-        color: active ? '#000' : 'var(--color-daw-text-dim)',
-        fontSize: 9,
+        width: 18, height: 18,
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        borderRadius: 3,
+        fontSize: 9, fontWeight: 700,
+        cursor: 'pointer',
+        transition: 'background 0.1s, color 0.1s, box-shadow 0.1s',
+        border: active ? `1px solid ${activeColor}` : '1px solid rgba(255,255,255,0.08)',
+        background: active ? activeBg : 'rgba(255,255,255,0.04)',
+        color: active ? activeColor : 'rgba(255,255,255,0.25)',
+        boxShadow: active ? `0 0 6px ${activeColor}` : 'none',
       }}
     >
       {label}
@@ -704,30 +693,15 @@ function TrackButton({
 
 // ─── ClipBlock ────────────────────────────────────────────────────────────────
 
-import type { AudioAsset } from '../../lib/project/projectSchema.js';
-
 function ClipBlock({
-  clip,
-  asset,
-  track,
-  left,
-  width,
-  isSelected,
-  isDragging,
-  dragOverlayRef,
-  onMoveStart,
-  onResizeStart,
-  onSelect,
-  onDoubleClick,
-  onContextMenu,
+  clip, asset, track, left, width, isSelected, isDragging, dragOverlayRef,
+  onMoveStart, onResizeStart, onSelect, onDoubleClick, onContextMenu,
 }: {
   clip: AudioClip | MidiClip;
   asset: AudioAsset | null;
   track: Track;
-  left: number;
-  width: number;
-  isSelected: boolean;
-  isDragging: boolean;
+  left: number; width: number;
+  isSelected: boolean; isDragging: boolean;
   dragOverlayRef?: React.MutableRefObject<HTMLDivElement | null>;
   onMoveStart: (e: React.PointerEvent<HTMLDivElement>) => void;
   onResizeStart: (e: React.PointerEvent<HTMLDivElement>) => void;
@@ -736,29 +710,31 @@ function ClipBlock({
   onContextMenu: (e: React.MouseEvent) => void;
 }) {
   const refCb = useCallback(
-    (el: HTMLDivElement | null) => {
-      if (dragOverlayRef) dragOverlayRef.current = el;
-    },
+    (el: HTMLDivElement | null) => { if (dragOverlayRef) dragOverlayRef.current = el; },
     [dragOverlayRef]
   );
 
-  const baseColor = track.color ?? (clip.type === 'audio' ? '#2a5fa0' : '#2a8060');
+  const base = track.color ?? (clip.type === 'audio' ? '#2852b8' : '#166e4c');
+  // Convert hex to rgba for gradient
+  const headerBg = base;
 
   return (
     <div
       ref={refCb}
-      className="absolute top-1 bottom-1 rounded overflow-hidden flex flex-col"
+      className="absolute overflow-hidden flex flex-col"
       style={{
-        left,
-        width,
-        background: `${baseColor}dd`,
+        top: 4, bottom: 4, left, width,
+        borderRadius: 5,
         border: isSelected
-          ? '1px solid rgba(255,255,255,0.6)'
-          : '1px solid rgba(255,255,255,0.12)',
+          ? '1px solid rgba(255,255,255,0.5)'
+          : '1px solid rgba(255,255,255,0.1)',
         cursor: 'grab',
         zIndex: isDragging ? 50 : 1,
-        boxShadow: isSelected ? '0 0 0 1px rgba(255,255,255,0.3)' : undefined,
-        transition: isDragging ? 'none' : undefined,
+        background: `linear-gradient(160deg, ${base}cc 0%, ${base}99 100%)`,
+        boxShadow: isSelected
+          ? `0 0 0 1px rgba(255,255,255,0.25), 0 0 12px rgba(139,127,248,0.25)`
+          : '0 1px 4px rgba(0,0,0,0.4)',
+        transition: isDragging ? 'none' : 'box-shadow 0.12s',
         willChange: isDragging ? 'transform' : undefined,
       }}
       onPointerDown={onMoveStart}
@@ -766,75 +742,57 @@ function ClipBlock({
       onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick(); }}
       onContextMenu={onContextMenu}
     >
-      {/* Clip header */}
+      {/* Header stripe */}
       <div
-        className="flex items-center px-1 gap-1 shrink-0"
         style={{
-          height: 16,
-          background: `${baseColor}`,
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
+          height: 15, flexShrink: 0,
+          background: `${headerBg}`,
+          display: 'flex', alignItems: 'center',
+          padding: '0 5px',
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
         }}
       >
-        <span className="text-xs font-medium truncate" style={{ color: '#fff', fontSize: 10 }}>
+        <span style={{ fontSize: 9, fontWeight: 600, color: 'rgba(255,255,255,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {clip.name}
         </span>
         {clip.muted && (
-          <span style={{ color: 'rgba(255,200,0,0.8)', fontSize: 9 }}>M</span>
+          <span style={{ color: 'rgba(245,166,35,0.9)', fontSize: 8, marginLeft: 3, fontWeight: 700 }}>M</span>
         )}
       </div>
 
-      {/* Waveform (audio) or note preview (midi) */}
-      <div className="flex-1 px-0.5 overflow-hidden">
+      {/* Content area */}
+      <div style={{ flex: 1, overflow: 'hidden', padding: '1px 2px' }}>
         {clip.type === 'audio' && asset && (
-          <WaveformMiniature peaks={asset.waveformPeaks} color="#fff" />
+          <WaveformMiniature peaks={asset.waveformPeaks} />
         )}
         {clip.type === 'midi' && (
           <MidiMiniature notes={(clip as MidiClip).notes} duration={clip.endTime - clip.startTime} />
         )}
       </div>
 
-      {/* Resize handle (right edge) */}
+      {/* Resize grip */}
       <div
-        className="absolute top-0 bottom-0 right-0"
-        style={{ width: 8, cursor: 'ew-resize', zIndex: 2 }}
-        onPointerDown={(e) => {
-          e.stopPropagation();
-          onResizeStart(e);
-        }}
-      />
+        style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: 8, cursor: 'ew-resize', zIndex: 2 }}
+        onPointerDown={(e) => { e.stopPropagation(); onResizeStart(e); }}
+      >
+        <div style={{
+          position: 'absolute', top: '50%', right: 2,
+          transform: 'translateY(-50%)',
+          width: 2, height: 12, borderRadius: 1,
+          background: 'rgba(255,255,255,0.25)',
+        }} />
+      </div>
     </div>
   );
 }
 
-function WaveformMiniature({ peaks, color }: { peaks: number[]; color: string }) {
+function WaveformMiniature({ peaks }: { peaks: number[] }) {
   if (!peaks.length) return null;
   return (
-    <svg
-      width="100%"
-      height="100%"
-      viewBox={`0 0 ${peaks.length} 32`}
-      preserveAspectRatio="none"
-      style={{ display: 'block' }}
-    >
-      <polyline
-        points={peaks
-          .map((p, i) => `${i},${16 - p * 14} ${i},${16 + p * 14}`)
-          .join(' ')}
-        fill="none"
-        stroke={color}
-        strokeWidth="1"
-        strokeOpacity="0.5"
-      />
+    <svg width="100%" height="100%" viewBox={`0 0 ${peaks.length} 32`} preserveAspectRatio="none" style={{ display: 'block' }}>
       {peaks.map((p, i) => (
-        <line
-          key={i}
-          x1={i}
-          y1={16 - p * 14}
-          x2={i}
-          y2={16 + p * 14}
-          stroke={color}
-          strokeOpacity="0.4"
-        />
+        <line key={i} x1={i} y1={16 - p * 13} x2={i} y2={16 + p * 13}
+          stroke="rgba(255,255,255,0.5)" strokeWidth="1" />
       ))}
     </svg>
   );
@@ -843,10 +801,7 @@ function WaveformMiniature({ peaks, color }: { peaks: number[]; color: string })
 function MidiMiniature({ notes, duration }: { notes: MidiClip['notes']; duration: number }) {
   if (!notes.length) {
     return (
-      <div
-        className="h-full flex items-center justify-center text-xs opacity-50"
-        style={{ color: '#fff' }}
-      >
+      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.3)', fontSize: 9 }}>
         empty
       </div>
     );
@@ -854,94 +809,69 @@ function MidiMiniature({ notes, duration }: { notes: MidiClip['notes']; duration
   const minNote = Math.min(...notes.map((n) => n.note));
   const maxNote = Math.max(...notes.map((n) => n.note));
   const noteRange = Math.max(1, maxNote - minNote);
-  const totalBeats = duration * 2; // approx
-
+  const totalBeats = Math.max(1, duration * 2);
   return (
     <svg width="100%" height="100%" style={{ display: 'block' }}>
-      {notes.map((n) => {
-        const x = `${(n.startBeat / totalBeats) * 100}%`;
-        const w = `${Math.max(1, (n.durationBeats / totalBeats) * 100)}%`;
-        const y = `${((maxNote - n.note) / noteRange) * 80 + 10}%`;
-        return (
-          <rect
-            key={n.id}
-            x={x}
-            y={y}
-            width={w}
-            height="10%"
-            fill="#fff"
-            fillOpacity="0.7"
-          />
-        );
-      })}
+      {notes.map((n) => (
+        <rect key={n.id}
+          x={`${(n.startBeat / totalBeats) * 100}%`}
+          y={`${((maxNote - n.note) / noteRange) * 78 + 11}%`}
+          width={`${Math.max(1.5, (n.durationBeats / totalBeats) * 100)}%`}
+          height="9%"
+          fill="rgba(255,255,255,0.75)" rx="0.5"
+        />
+      ))}
     </svg>
   );
 }
 
 // ─── Context menu ─────────────────────────────────────────────────────────────
 
-function ClipContextMenu({
-  x,
-  y,
-  clipId,
-  clipType,
-  onClose,
-  onDelete,
-  onDuplicate,
-  onSplit,
-  onOpenPianoRoll,
-}: {
-  x: number;
-  y: number;
-  clipId: string;
-  clipType: 'audio' | 'midi';
-  onClose: () => void;
-  onDelete: () => void;
-  onDuplicate: () => void;
-  onSplit: () => void;
-  onOpenPianoRoll?: () => void;
+function ClipContextMenu({ x, y, clipId, clipType, onClose, onDelete, onDuplicate, onSplit, onOpenPianoRoll }: {
+  x: number; y: number; clipId: string; clipType: 'audio' | 'midi';
+  onClose: () => void; onDelete: () => void; onDuplicate: () => void;
+  onSplit: () => void; onOpenPianoRoll?: () => void;
 }) {
   return (
     <div
-      className="fixed z-50 rounded shadow-xl py-1"
       style={{
-        left: x,
-        top: y,
-        background: 'var(--color-daw-panel)',
-        border: '1px solid var(--color-daw-border-bright)',
-        minWidth: 140,
+        position: 'fixed', left: x, top: y,
+        background: 'rgba(10,13,28,0.96)',
+        border: '1px solid rgba(255,255,255,0.1)',
+        borderRadius: 8,
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)',
+        minWidth: 148,
+        padding: '4px 0',
+        zIndex: 50,
       }}
     >
-      {onOpenPianoRoll && (
-        <CtxItem label="Open Piano Roll" onClick={onOpenPianoRoll} />
-      )}
-      <CtxItem label="Duplicate  Ctrl+D" onClick={onDuplicate} />
-      {clipType === 'audio' && <CtxItem label="Split" onClick={onSplit} />}
-      <div style={{ height: 1, background: 'var(--color-daw-border)', margin: '2px 0' }} />
-      <CtxItem label="Delete" onClick={onDelete} danger />
+      {onOpenPianoRoll && <CtxItem label="Open Piano Roll" onClick={onOpenPianoRoll} icon="⊞" />}
+      <CtxItem label="Duplicate  Ctrl+D" onClick={onDuplicate} icon="⧉" />
+      {clipType === 'audio' && <CtxItem label="Split at Playhead" onClick={onSplit} icon="⊘" />}
+      <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '3px 0' }} />
+      <CtxItem label="Delete" onClick={onDelete} danger icon="✕" />
     </div>
   );
 }
 
-function CtxItem({
-  label,
-  onClick,
-  danger,
-}: {
-  label: string;
-  onClick: () => void;
-  danger?: boolean;
+function CtxItem({ label, onClick, danger, icon }: {
+  label: string; onClick: () => void; danger?: boolean; icon?: string;
 }) {
   return (
     <button
-      className="w-full text-left px-3 py-1.5 text-xs hover:opacity-80"
       style={{
+        display: 'flex', width: '100%', textAlign: 'left',
+        padding: '6px 12px', gap: 8,
         background: 'transparent',
-        color: danger ? 'var(--color-daw-red)' : 'var(--color-daw-text)',
-        display: 'block',
+        border: 'none', cursor: 'pointer',
+        color: danger ? '#ff7777' : 'rgba(210,213,240,0.85)',
+        fontSize: 11, fontWeight: 400,
+        transition: 'background 0.08s, color 0.08s',
+        alignItems: 'center',
       }}
       onClick={onClick}
     >
+      {icon && <span style={{ fontSize: 10, opacity: 0.7, width: 12, flexShrink: 0 }}>{icon}</span>}
       {label}
     </button>
   );

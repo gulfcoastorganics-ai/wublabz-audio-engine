@@ -85,25 +85,39 @@ function App() {
     >
       {/* Top nav: app view switcher */}
       <div
-        className="flex items-center gap-1 px-2 h-7 shrink-0"
+        className="flex items-center gap-0.5 px-2 shrink-0"
         style={{
-          background: 'var(--color-daw-bg)',
-          borderBottom: '1px solid var(--color-daw-border)',
+          height: 26,
+          background: 'rgba(4, 6, 14, 0.96)',
+          borderBottom: '1px solid rgba(255,255,255,0.045)',
+          boxShadow: '0 1px 8px rgba(0,0,0,0.5)',
         }}
       >
-        {(['studio', 'pad', 'engine'] as AppView[]).map((v) => (
-          <button
-            key={v}
-            onClick={() => setView(v)}
-            className="px-3 h-5 rounded text-xs capitalize hover:opacity-80"
-            style={{
-              background: view === v ? 'var(--color-daw-accent-dim)' : 'transparent',
-              color: view === v ? '#fff' : 'var(--color-daw-text-dim)',
-            }}
-          >
-            {v === 'studio' ? 'WubLabz Studio' : v === 'pad' ? 'WubPad' : 'Engine'}
-          </button>
-        ))}
+        {(['studio', 'pad', 'engine'] as AppView[]).map((v) => {
+          const active = view === v;
+          return (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              style={{
+                height: 20,
+                padding: '0 10px',
+                borderRadius: 4,
+                fontSize: 11,
+                fontWeight: active ? 600 : 400,
+                letterSpacing: '0.02em',
+                border: 'none',
+                cursor: 'pointer',
+                transition: 'background 0.12s, color 0.12s, box-shadow 0.12s',
+                background: active ? 'rgba(139,127,248,0.18)' : 'transparent',
+                color: active ? '#c0b8ff' : 'rgba(255,255,255,0.3)',
+                boxShadow: active ? '0 0 10px rgba(139,127,248,0.15), inset 0 0 0 1px rgba(139,127,248,0.3)' : 'none',
+              }}
+            >
+              {v === 'studio' ? 'WubLabz Studio' : v === 'pad' ? 'WubPad' : 'Engine'}
+            </button>
+          );
+        })}
       </div>
 
       {view === 'studio' ? (

@@ -4,6 +4,88 @@ import type { AudioAsset } from '../../lib/project/projectSchema.js';
 
 type BrowserTab = 'samples' | 'projects';
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
+const S = {
+  panel: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    width: 196,
+    flexShrink: 0,
+    background: 'rgba(6,8,22,0.97)',
+    borderRight: '1px solid rgba(255,255,255,0.04)',
+    height: '100%',
+  },
+  titleBar: {
+    display: 'flex',
+    alignItems: 'center',
+    padding: '0 10px',
+    height: 30,
+    flexShrink: 0,
+    background: 'rgba(4,6,16,0.98)',
+    borderBottom: '1px solid rgba(255,255,255,0.045)',
+  },
+  title: {
+    fontSize: 11,
+    fontWeight: 600,
+    color: '#c0b8ff',
+    letterSpacing: '0.02em',
+  },
+  tabBar: {
+    display: 'flex',
+    flexShrink: 0,
+    borderBottom: '1px solid rgba(255,255,255,0.04)',
+  },
+  searchWrap: {
+    padding: '6px 8px 4px',
+    flexShrink: 0,
+  },
+  searchInput: {
+    width: '100%',
+    height: 24,
+    padding: '0 8px',
+    background: 'rgba(0,0,0,0.45)',
+    border: '1px solid rgba(255,255,255,0.06)',
+    borderRadius: 4,
+    color: '#ced0ea',
+    fontSize: 11,
+    outline: 'none',
+    boxSizing: 'border-box' as const,
+  },
+  dropZone: (importing: boolean) => ({
+    margin: '0 8px 6px',
+    height: 34,
+    flexShrink: 0 as const,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 5,
+    border: importing
+      ? '1px solid rgba(139,127,248,0.5)'
+      : '1px dashed rgba(255,255,255,0.1)',
+    background: importing
+      ? 'rgba(139,127,248,0.08)'
+      : 'rgba(255,255,255,0.015)',
+    color: importing ? '#c0b8ff' : 'rgba(255,255,255,0.25)',
+    fontSize: 10,
+    cursor: 'pointer',
+    transition: 'background 0.12s, border-color 0.12s, color 0.12s',
+  }),
+  list: {
+    flex: 1,
+    overflowY: 'auto' as const,
+  },
+  empty: {
+    padding: '20px 12px',
+    textAlign: 'center' as const,
+    color: 'rgba(255,255,255,0.2)',
+    fontSize: 11,
+    lineHeight: 1.6,
+  },
+} as const;
+
+// ─── AssetBrowser ─────────────────────────────────────────────────────────────
+
 export function AssetBrowser() {
   const { project, importFile, setStatus } = useStudioStore();
   const [tab, setTab] = useState<BrowserTab>('samples');
@@ -41,120 +123,92 @@ export function AssetBrowser() {
     return m > 0 ? `${m}:${String(s).padStart(2, '0')}` : `${s}s`;
   }
 
-  function formatSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes}B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)}KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
-  }
-
   return (
-    <div
-      className="flex flex-col"
-      style={{
-        width: 200,
-        background: 'var(--color-daw-panel)',
-        borderRight: '1px solid var(--color-daw-border)',
-        height: '100%',
-      }}
-    >
+    <div style={S.panel}>
       {/* Title */}
-      <div
-        className="flex items-center px-2 h-8 shrink-0"
-        style={{
-          borderBottom: '1px solid var(--color-daw-border)',
-          background: 'var(--color-daw-bg)',
-        }}
-      >
-        <span className="text-xs font-medium" style={{ color: 'var(--color-daw-text-bright)' }}>
-          Browser
-        </span>
+      <div style={S.titleBar}>
+        <span style={S.title}>Browser</span>
       </div>
 
       {/* Tabs */}
-      <div className="flex shrink-0" style={{ borderBottom: '1px solid var(--color-daw-border)' }}>
-        {(['samples', 'projects'] as BrowserTab[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className="flex-1 py-1 text-xs capitalize"
-            style={{
-              background: tab === t ? 'var(--color-daw-surface)' : 'transparent',
-              color: tab === t ? 'var(--color-daw-text-bright)' : 'var(--color-daw-text-dim)',
-              borderBottom: tab === t ? '2px solid var(--color-daw-accent)' : '2px solid transparent',
-            }}
-          >
-            {t}
-          </button>
-        ))}
+      <div style={S.tabBar}>
+        {(['samples', 'projects'] as BrowserTab[]).map((t) => {
+          const active = tab === t;
+          return (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              style={{
+                flex: 1,
+                padding: '5px 0',
+                fontSize: 10,
+                fontWeight: active ? 600 : 400,
+                letterSpacing: '0.04em',
+                textTransform: 'capitalize',
+                cursor: 'pointer',
+                background: 'transparent',
+                border: 'none',
+                borderBottom: active
+                  ? '2px solid rgba(139,127,248,0.7)'
+                  : '2px solid transparent',
+                color: active ? '#c0b8ff' : 'rgba(255,255,255,0.25)',
+                transition: 'color 0.1s, border-color 0.1s',
+              }}
+            >
+              {t}
+            </button>
+          );
+        })}
       </div>
 
       {/* Search */}
-      <div className="px-2 py-1 shrink-0">
+      <div style={S.searchWrap}>
         <input
           type="text"
           placeholder="Search…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full px-2 py-0.5 rounded text-xs"
-          style={{
-            background: 'var(--color-daw-bg)',
-            color: 'var(--color-daw-text)',
-            border: '1px solid var(--color-daw-border-bright)',
-            outline: 'none',
-          }}
+          style={S.searchInput}
         />
       </div>
 
-      {/* Drop zone / import */}
+      {/* Drop zone */}
       <div
-        className="mx-2 mb-1 shrink-0 flex items-center justify-center rounded border-dashed border text-xs cursor-pointer hover:opacity-80"
-        style={{
-          height: 32,
-          borderColor: 'var(--color-daw-border-bright)',
-          color: importing ? 'var(--color-daw-accent)' : 'var(--color-daw-text-dim)',
-          background: 'var(--color-daw-bg)',
-        }}
+        style={S.dropZone(importing)}
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
       >
-        {importing ? 'Importing…' : '+ Drop or click to import'}
+        {importing ? '⏳ Importing…' : '+ Drop or click to import'}
         <input
           ref={fileInputRef}
           type="file"
           accept="audio/*"
           multiple
-          className="hidden"
+          style={{ display: 'none' }}
           onChange={(e) => void handleFileImport(e.target.files)}
         />
       </div>
 
-      {/* Asset list */}
-      <div className="flex-1 overflow-y-auto">
+      {/* List */}
+      <div style={S.list}>
         {tab === 'samples' && (
-          <div>
-            {assets.length === 0 ? (
-              <div
-                className="text-xs text-center py-4"
-                style={{ color: 'var(--color-daw-text-dim)' }}
-              >
-                {search ? 'No results' : 'No samples yet'}
-              </div>
-            ) : (
-              assets.map((asset) => (
-                <AssetItem
-                  key={asset.id}
-                  asset={asset}
-                  formatDuration={formatDuration}
-                />
-              ))
-            )}
-          </div>
+          assets.length === 0 ? (
+            <div style={S.empty}>
+              {search ? (
+                <>No results for<br /><em>"{search}"</em></>
+              ) : (
+                <>No samples yet.<br />Drop audio files to import.</>
+              )}
+            </div>
+          ) : (
+            assets.map((asset) => (
+              <AssetItem key={asset.id} asset={asset} formatDuration={formatDuration} />
+            ))
+          )
         )}
 
-        {tab === 'projects' && (
-          <ProjectsList />
-        )}
+        {tab === 'projects' && <ProjectsList />}
       </div>
     </div>
   );
@@ -163,12 +217,13 @@ export function AssetBrowser() {
 // ─── AssetItem ────────────────────────────────────────────────────────────────
 
 function AssetItem({
-  asset,
-  formatDuration,
+  asset, formatDuration,
 }: {
   asset: AudioAsset;
   formatDuration: (s: number) => string;
 }) {
+  const [hovered, setHovered] = useState(false);
+
   function handleDragStart(e: React.DragEvent<HTMLDivElement>) {
     e.dataTransfer.setData('text/plain', asset.id);
     e.dataTransfer.effectAllowed = 'copy';
@@ -176,53 +231,60 @@ function AssetItem({
 
   return (
     <div
-      className="flex flex-col px-2 py-1 cursor-grab hover:opacity-80 border-b"
-      style={{
-        borderColor: 'var(--color-daw-border)',
-        background: 'transparent',
-      }}
       draggable
       onDragStart={handleDragStart}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       title={`${asset.name}\n${formatDuration(asset.durationSeconds)} · ${asset.sampleRate}Hz`}
+      style={{
+        padding: '5px 8px 5px 8px',
+        cursor: 'grab',
+        borderBottom: '1px solid rgba(255,255,255,0.03)',
+        background: hovered ? 'rgba(139,127,248,0.06)' : 'transparent',
+        transition: 'background 0.1s',
+      }}
     >
-      <div className="flex items-center gap-1">
-        {/* Waveform icon */}
-        <span style={{ color: 'var(--color-daw-clip-audio)', fontSize: 12 }}>♪</span>
-        <span
-          className="flex-1 truncate text-xs"
-          style={{ color: 'var(--color-daw-text)', fontSize: 11 }}
-        >
+      {/* Name row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+        <span style={{ color: '#4a7ff0', fontSize: 11, flexShrink: 0 }}>♪</span>
+        <span style={{
+          flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          fontSize: 11, fontWeight: 500, color: '#d4d6f0',
+        }}>
           {asset.name}
         </span>
       </div>
-      <div className="flex items-center gap-2 pl-5">
-        <span style={{ color: 'var(--color-daw-text-dim)', fontSize: 9 }}>
+
+      {/* Meta row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 16, marginTop: 2 }}>
+        <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)', fontFamily: 'monospace' }}>
           {formatDuration(asset.durationSeconds)}
         </span>
         {asset.channels === 2 && (
-          <span style={{ color: 'var(--color-daw-text-dim)', fontSize: 9 }}>ST</span>
+          <span style={{
+            fontSize: 8, fontWeight: 600,
+            color: 'rgba(139,127,248,0.55)',
+            letterSpacing: '0.06em',
+          }}>ST</span>
         )}
+        <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.15)', fontFamily: 'monospace' }}>
+          {Math.round(asset.sampleRate / 1000)}k
+        </span>
       </div>
 
       {/* Mini waveform */}
       {asset.waveformPeaks.length > 0 && (
         <svg
           width="100%"
-          height="12"
-          viewBox={`0 0 ${asset.waveformPeaks.length} 12`}
+          height="10"
+          viewBox={`0 0 ${asset.waveformPeaks.length} 10`}
           preserveAspectRatio="none"
-          className="pl-5 mt-0.5"
-          style={{ display: 'block' }}
+          style={{ display: 'block', paddingLeft: 16, marginTop: 2, opacity: hovered ? 0.85 : 0.45, transition: 'opacity 0.1s' }}
         >
           {asset.waveformPeaks.map((p, i) => (
-            <line
-              key={i}
-              x1={i}
-              y1={6 - p * 5}
-              x2={i}
-              y2={6 + p * 5}
-              stroke="var(--color-daw-clip-audio)"
-              strokeOpacity="0.6"
+            <line key={i}
+              x1={i} y1={5 - p * 4.5} x2={i} y2={5 + p * 4.5}
+              stroke="#4a7ff0" strokeWidth="1"
             />
           ))}
         </svg>
@@ -246,22 +308,26 @@ function ProjectsList() {
   }
 
   return (
-    <div className="flex flex-col gap-2 p-2">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10 }}>
       <button
         onClick={() => void handleLoad()}
-        className="w-full py-1.5 rounded text-xs hover:opacity-80"
         style={{
-          background: 'var(--color-daw-accent-dim)',
-          color: '#fff',
+          width: '100%', height: 30,
+          background: 'rgba(139,127,248,0.15)',
+          border: '1px solid rgba(139,127,248,0.3)',
+          borderRadius: 5,
+          color: '#c0b8ff',
+          fontSize: 11, fontWeight: 500,
+          cursor: 'pointer',
+          transition: 'background 0.1s',
         }}
       >
         Load Project…
       </button>
-      <div
-        className="text-xs text-center py-2"
-        style={{ color: 'var(--color-daw-text-dim)' }}
-      >
-        Projects are auto-saved to IndexedDB
+      <div style={{
+        fontSize: 10, textAlign: 'center', color: 'rgba(255,255,255,0.18)', lineHeight: 1.6,
+      }}>
+        Projects auto-save<br />to IndexedDB
       </div>
     </div>
   );

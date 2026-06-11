@@ -2,12 +2,11 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useStudioStore } from '../../state/useStudioStore.js';
 import type { MidiClip, MidiNote } from '../../lib/project/projectSchema.js';
 
-const KEY_WIDTH = 36;
+const KEY_WIDTH = 38;
 const NOTE_HEIGHT = 14;
-const NOTES_PER_OCTAVE = 12;
 const TOTAL_NOTES = 128;
 const MIDI_NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-const BLACK_KEYS = new Set([1, 3, 6, 8, 10]); // semitone offsets
+const BLACK_KEYS = new Set([1, 3, 6, 8, 10]);
 
 function noteName(midi: number): string {
   const octave = Math.floor(midi / 12) - 1;
@@ -18,7 +17,6 @@ function isBlack(midi: number): boolean {
   return BLACK_KEYS.has(midi % 12);
 }
 
-// Pixels per beat at current zoom
 function beatsToPixels(beats: number, pxPerBeat: number): number {
   return beats * pxPerBeat;
 }
@@ -33,22 +31,162 @@ interface DragNote {
   startNote: number;
 }
 
+// ─── Style constants ──────────────────────────────────────────────────────────
+
+const S = {
+  container: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    background: 'rgba(4,6,14,0.98)',
+    borderTop: '2px solid rgba(139,127,248,0.6)',
+    height: '40vh',
+    minHeight: 200,
+    maxHeight: 480,
+    boxShadow: '0 -4px 24px rgba(0,0,0,0.5)',
+  },
+  toolbar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '0 10px',
+    height: 38,
+    flexShrink: 0,
+    background: 'rgba(6,8,22,0.97)',
+    borderBottom: '1px solid rgba(255,255,255,0.055)',
+    boxShadow: '0 1px 8px rgba(0,0,0,0.4)',
+  },
+  title: {
+    fontSize: 11,
+    fontWeight: 600,
+    color: '#c0b8ff',
+    letterSpacing: '0.02em',
+    marginRight: 4,
+    flexShrink: 0,
+  },
+  divider: {
+    width: 1,
+    height: 18,
+    background: 'rgba(255,255,255,0.07)',
+    margin: '0 3px',
+    flexShrink: 0,
+  },
+  select: {
+    height: 22,
+    padding: '0 18px 0 7px',
+    background: 'rgba(0,0,0,0.5)',
+    border: '1px solid rgba(255,255,255,0.07)',
+    borderRadius: 4,
+    color: '#ced0ea',
+    fontSize: 11,
+    outline: 'none',
+  },
+  velInput: {
+    width: 38,
+    height: 22,
+    textAlign: 'center' as const,
+    background: 'rgba(0,0,0,0.5)',
+    border: '1px solid rgba(255,255,255,0.07)',
+    borderRadius: 4,
+    color: '#ced0ea',
+    fontSize: 11,
+    outline: 'none',
+  },
+  labelText: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.3)',
+    flexShrink: 0,
+  },
+  closeBtn: {
+    height: 22,
+    padding: '0 8px',
+    background: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.08)',
+    borderRadius: 4,
+    color: 'rgba(255,255,255,0.35)',
+    fontSize: 10,
+    cursor: 'pointer',
+    flexShrink: 0,
+    transition: 'background 0.1s, color 0.1s',
+  },
+  pianoColumn: {
+    width: KEY_WIDTH,
+    flexShrink: 0,
+    overflowY: 'auto' as const,
+    overflowX: 'hidden' as const,
+    background: '#0e0f18',
+    borderRight: '1px solid rgba(255,255,255,0.06)',
+  },
+  gridArea: {
+    flex: 1,
+    overflow: 'auto' as const,
+    position: 'relative' as const,
+  },
+  velocityLane: {
+    flexShrink: 0,
+    overflowX: 'auto' as const,
+    borderTop: '1px solid rgba(255,255,255,0.06)',
+    background: 'rgba(4,5,14,0.97)',
+    paddingLeft: KEY_WIDTH,
+  },
+  emptyState: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 192,
+    background: 'rgba(4,6,14,0.98)',
+    color: 'rgba(255,255,255,0.18)',
+    fontSize: 12,
+    flexDirection: 'column' as const,
+    gap: 6,
+  },
+} as const;
+
+// ─── Tool button ──────────────────────────────────────────────────────────────
+
+function ToolBtn({
+  label, active, onClick, title,
+}: {
+  label: string; active: boolean; onClick: () => void; title: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      style={{
+        height: 22,
+        padding: '0 9px',
+        borderRadius: 4,
+        fontSize: 10,
+        fontWeight: active ? 600 : 400,
+        cursor: 'pointer',
+        transition: 'background 0.1s, color 0.1s, box-shadow 0.1s',
+        border: active ? '1px solid rgba(139,127,248,0.5)' : '1px solid rgba(255,255,255,0.07)',
+        background: active ? 'rgba(139,127,248,0.2)' : 'rgba(255,255,255,0.04)',
+        color: active ? '#c0b8ff' : 'rgba(255,255,255,0.3)',
+        boxShadow: active ? '0 0 8px rgba(139,127,248,0.2)' : 'none',
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export function PianoRoll({ onClose }: { onClose: () => void }) {
   const { project, pianoRollClipId, addMidiNote, updateMidiNote, deleteMidiNote } = useStudioStore();
-
   const clip = project.midiClips.find((c) => c.id === pianoRollClipId) as MidiClip | undefined;
 
   const [pxPerBeat, setPxPerBeat] = useState(40);
   const [tool, setTool] = useState<'pencil' | 'select' | 'erase'>('pencil');
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
-  const [defaultDuration, setDefaultDuration] = useState(0.5); // beats
+  const [defaultDuration, setDefaultDuration] = useState(0.5);
   const [defaultVelocity, setDefaultVelocity] = useState(100);
   const noteAreaRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragNote | null>(null);
   const [, forceUpdate] = useState(0);
 
   const clipDuration = clip ? clip.endTime - clip.startTime : 8;
-  // Duration in beats: approximate via bpm
   const bpm = project.bpm;
   const totalBeats = Math.max(8, (clipDuration * bpm) / 60 + 8);
   const gridWidth = beatsToPixels(totalBeats, pxPerBeat);
@@ -62,33 +200,30 @@ export function PianoRoll({ onClose }: { onClose: () => void }) {
     [defaultDuration]
   );
 
-  // ─── Wheel zoom ─────────────────────────────────────────────────────────────
+  // ─── Wheel zoom ────────────────────────────────────────────────────────────
+
   useEffect(() => {
     const el = noteAreaRef.current;
     if (!el) return;
     const handler = (e: WheelEvent) => {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
-        const delta = e.deltaY > 0 ? 0.85 : 1.18;
-        setPxPerBeat((p) => Math.max(8, Math.min(200, p * delta)));
+        setPxPerBeat((p) => Math.max(8, Math.min(200, p * (e.deltaY > 0 ? 0.85 : 1.18))));
       }
     };
     el.addEventListener('wheel', handler, { passive: false });
     return () => el.removeEventListener('wheel', handler);
   }, []);
 
-  // ─── Note grid click ─────────────────────────────────────────────────────────
+  // ─── Grid interaction ──────────────────────────────────────────────────────
+
   function handleNoteAreaPointerDown(e: React.PointerEvent<HTMLDivElement>) {
     if (!clip) return;
     const rect = noteAreaRef.current!.getBoundingClientRect();
-    const scrollLeft = noteAreaRef.current!.scrollLeft;
-    const scrollTop = noteAreaRef.current!.scrollTop;
-    const x = e.clientX - rect.left + scrollLeft;
-    const y = e.clientY - rect.top + scrollTop;
-
+    const x = e.clientX - rect.left + noteAreaRef.current!.scrollLeft;
+    const y = e.clientY - rect.top + noteAreaRef.current!.scrollTop;
     const beat = snapBeat(x / pxPerBeat);
     const noteNum = TOTAL_NOTES - 1 - Math.floor(y / NOTE_HEIGHT);
-
     if (tool === 'pencil') {
       addMidiNote(clip.id, {
         id: crypto.randomUUID(),
@@ -115,13 +250,9 @@ export function PianoRoll({ onClose }: { onClose: () => void }) {
     }
     e.currentTarget.setPointerCapture(e.pointerId);
     dragRef.current = {
-      noteId: note.id,
-      type,
-      startBeat: note.startBeat,
-      durationBeats: note.durationBeats,
-      startClientX: e.clientX,
-      startClientY: e.clientY,
-      startNote: note.note,
+      noteId: note.id, type,
+      startBeat: note.startBeat, durationBeats: note.durationBeats,
+      startClientX: e.clientX, startClientY: e.clientY, startNote: note.note,
     };
     setSelectedNoteId(note.id);
   }
@@ -133,14 +264,15 @@ export function PianoRoll({ onClose }: { onClose: () => void }) {
     const dy = e.clientY - drag.startClientY;
     const dBeats = dx / pxPerBeat;
     const dNotes = -Math.round(dy / NOTE_HEIGHT);
-
     if (drag.type === 'move') {
-      const newBeat = snapBeat(Math.max(0, drag.startBeat + dBeats));
-      const newNote = Math.max(0, Math.min(127, drag.startNote + dNotes));
-      updateMidiNote(clip.id, drag.noteId, { startBeat: newBeat, note: newNote });
+      updateMidiNote(clip.id, drag.noteId, {
+        startBeat: snapBeat(Math.max(0, drag.startBeat + dBeats)),
+        note: Math.max(0, Math.min(127, drag.startNote + dNotes)),
+      });
     } else {
-      const newDuration = Math.max(0.0625, snapBeat(drag.durationBeats + dBeats) || defaultDuration);
-      updateMidiNote(clip.id, drag.noteId, { durationBeats: newDuration });
+      updateMidiNote(clip.id, drag.noteId, {
+        durationBeats: Math.max(0.0625, snapBeat(drag.durationBeats + dBeats) || defaultDuration),
+      });
     }
   }
 
@@ -149,6 +281,7 @@ export function PianoRoll({ onClose }: { onClose: () => void }) {
   }
 
   // ─── Keyboard shortcuts ────────────────────────────────────────────────────
+
   useEffect(() => {
     function handler(e: KeyboardEvent) {
       if ((e.target as HTMLElement).tagName === 'INPUT') return;
@@ -166,128 +299,72 @@ export function PianoRoll({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener('keydown', handler);
   }, [onClose, selectedNoteId, clip, deleteMidiNote]);
 
+  // ─── Empty ─────────────────────────────────────────────────────────────────
+
   if (!clip) {
     return (
-      <div
-        className="flex items-center justify-center h-48"
-        style={{ background: 'var(--color-daw-surface)', color: 'var(--color-daw-text-dim)' }}
-      >
+      <div style={S.emptyState}>
+        <span style={{ fontSize: 22, opacity: 0.2 }}>♩</span>
         No clip selected
       </div>
     );
   }
 
-  // ─── Beat lines ─────────────────────────────────────────────────────────────
-  const beatLines: { x: number; isMajor: boolean }[] = [];
+  // ─── Beat lines ────────────────────────────────────────────────────────────
+
   const bpb = project.timeSignature.beatsPerBar;
+  const beatLines: { x: number; isMajor: boolean }[] = [];
   for (let b = 0; b <= Math.ceil(totalBeats); b++) {
     beatLines.push({ x: b * pxPerBeat, isMajor: b % bpb === 0 });
   }
 
   return (
-    <div
-      className="flex flex-col"
-      style={{
-        background: 'var(--color-daw-surface)',
-        borderTop: '2px solid var(--color-daw-accent)',
-        height: '40vh',
-        minHeight: 200,
-        maxHeight: 480,
-      }}
-    >
+    <div style={S.container}>
       {/* Toolbar */}
-      <div
-        className="flex items-center gap-2 px-3 h-10 shrink-0 select-none"
-        style={{
-          background: 'var(--color-daw-panel)',
-          borderBottom: '1px solid var(--color-daw-border)',
-        }}
-      >
-        <span
-          className="font-medium text-xs mr-2"
-          style={{ color: 'var(--color-daw-text-bright)' }}
-        >
-          Piano Roll — {clip.name}
-        </span>
+      <div style={S.toolbar}>
+        <span style={S.title}>Piano Roll — {clip.name}</span>
 
-        {(['pencil', 'select', 'erase'] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTool(t)}
-            className="px-2 h-6 rounded text-xs capitalize hover:opacity-80"
-            style={{
-              background:
-                tool === t ? 'var(--color-daw-accent)' : 'var(--color-daw-border-bright)',
-              color: tool === t ? '#fff' : 'var(--color-daw-text-dim)',
-            }}
-            title={`${t} (${t[0]})`}
-          >
-            {t === 'pencil' ? '✏ Pencil' : t === 'select' ? '↖ Select' : '✕ Erase'}
-          </button>
-        ))}
+        <ToolBtn label="✏ Pencil" active={tool === 'pencil'} onClick={() => setTool('pencil')} title="Draw notes (P)" />
+        <ToolBtn label="↖ Select" active={tool === 'select'} onClick={() => setTool('select')} title="Select notes (S)" />
+        <ToolBtn label="✕ Erase"  active={tool === 'erase'}  onClick={() => setTool('erase')}  title="Erase notes (E)" />
 
-        <div className="w-px h-5 mx-1" style={{ background: 'var(--color-daw-border-bright)' }} />
+        <div style={S.divider} />
 
-        <label className="flex items-center gap-1 text-xs" style={{ color: 'var(--color-daw-text-dim)' }}>
-          Grid
+        <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span style={S.labelText}>Grid</span>
           <select
             value={defaultDuration}
             onChange={(e) => setDefaultDuration(Number(e.target.value))}
-            className="h-6 rounded text-xs px-1"
-            style={{
-              background: 'var(--color-daw-bg)',
-              color: 'var(--color-daw-text)',
-              border: '1px solid var(--color-daw-border-bright)',
-            }}
+            style={S.select}
           >
             <option value={0.0625}>1/16</option>
             <option value={0.125}>1/8</option>
             <option value={0.25}>1/4</option>
             <option value={0.5}>1/2</option>
-            <option value={1}>1</option>
+            <option value={1}>1 bar</option>
           </select>
         </label>
 
-        <label className="flex items-center gap-1 text-xs" style={{ color: 'var(--color-daw-text-dim)' }}>
-          Vel
+        <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span style={S.labelText}>Vel</span>
           <input
             type="number"
-            min={1}
-            max={127}
+            min={1} max={127}
             value={defaultVelocity}
             onChange={(e) => setDefaultVelocity(Number(e.target.value))}
-            className="w-10 text-center rounded text-xs px-1"
-            style={{
-              background: 'var(--color-daw-bg)',
-              color: 'var(--color-daw-text)',
-              border: '1px solid var(--color-daw-border-bright)',
-            }}
+            style={S.velInput}
           />
         </label>
 
-        <div className="flex-1" />
+        <div style={{ flex: 1 }} />
 
-        <button
-          onClick={onClose}
-          className="px-2 h-6 rounded text-xs hover:opacity-80"
-          style={{ background: 'var(--color-daw-border-bright)', color: 'var(--color-daw-text-dim)' }}
-          title="Close Piano Roll (Esc)"
-        >
-          ✕ Close
-        </button>
+        <button onClick={onClose} style={S.closeBtn} title="Close (Esc)">✕ Close</button>
       </div>
 
-      {/* Body: piano keys + note grid */}
-      <div className="flex flex-1 overflow-hidden">
+      {/* Body */}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* Piano keyboard */}
-        <div
-          className="shrink-0 overflow-y-auto overflow-x-hidden"
-          style={{
-            width: KEY_WIDTH,
-            background: '#1a1a1a',
-            borderRight: '1px solid var(--color-daw-border)',
-          }}
-        >
+        <div style={S.pianoColumn}>
           <div style={{ height: gridHeight }}>
             {Array.from({ length: TOTAL_NOTES }, (_, i) => {
               const midi = TOTAL_NOTES - 1 - i;
@@ -296,20 +373,26 @@ export function PianoRoll({ onClose }: { onClose: () => void }) {
               return (
                 <div
                   key={midi}
-                  className="flex items-center justify-end pr-1 relative"
                   style={{
                     height: NOTE_HEIGHT,
-                    background: black ? '#222' : '#eee',
-                    borderBottom: '1px solid #444',
-                    color: black ? '#aaa' : '#333',
-                    fontSize: 9,
-                    zIndex: black ? 1 : 0,
-                    fontWeight: isC ? 'bold' : undefined,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'flex-end',
+                    paddingRight: 4,
+                    background: black ? '#141420' : '#d8d9e8',
+                    borderBottom: `1px solid ${black ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.15)'}`,
+                    position: 'relative',
+                    boxShadow: isC && !black ? 'inset 0 -1px 0 rgba(139,127,248,0.25)' : undefined,
                   }}
                   title={noteName(midi)}
                 >
                   {isC && (
-                    <span style={{ color: black ? '#aaa' : '#555', fontSize: 8 }}>
+                    <span style={{
+                      fontSize: 8,
+                      fontWeight: 700,
+                      color: black ? 'rgba(180,172,255,0.4)' : 'rgba(60,60,100,0.6)',
+                      letterSpacing: '0.03em',
+                    }}>
                       {noteName(midi)}
                     </span>
                   )}
@@ -322,85 +405,114 @@ export function PianoRoll({ onClose }: { onClose: () => void }) {
         {/* Note grid */}
         <div
           ref={noteAreaRef}
-          className="flex-1 overflow-auto relative"
-          style={{ cursor: tool === 'pencil' ? 'crosshair' : tool === 'erase' ? 'cell' : 'default' }}
+          style={{
+            ...S.gridArea,
+            cursor: tool === 'pencil' ? 'crosshair' : tool === 'erase' ? 'cell' : 'default',
+          }}
           onPointerDown={handleNoteAreaPointerDown}
           onPointerMove={handleNoteAreaPointerMove}
           onPointerUp={handleNoteAreaPointerUp}
         >
           <div style={{ width: gridWidth, height: gridHeight, position: 'relative' }}>
-            {/* Horizontal pitch lines */}
+            {/* Horizontal pitch rows */}
             {Array.from({ length: TOTAL_NOTES }, (_, i) => {
               const midi = TOTAL_NOTES - 1 - i;
               const black = isBlack(midi);
+              const isC = midi % 12 === 0;
               return (
                 <div
                   key={i}
-                  className="absolute left-0 right-0"
                   style={{
+                    position: 'absolute', left: 0, right: 0,
                     top: i * NOTE_HEIGHT,
                     height: NOTE_HEIGHT,
-                    background: black ? 'rgba(0,0,0,0.25)' : 'transparent',
-                    borderBottom: `1px solid ${midi % 12 === 0 ? 'var(--color-daw-border-bright)' : 'var(--color-daw-border)'}`,
+                    background: black ? 'rgba(0,0,0,0.2)' : 'transparent',
+                    borderBottom: `1px solid ${isC ? 'rgba(139,127,248,0.12)' : 'rgba(255,255,255,0.03)'}`,
                     pointerEvents: 'none',
                   }}
                 />
               );
             })}
 
-            {/* Vertical beat lines */}
+            {/* Vertical beat / bar lines */}
             {beatLines.map((line, i) => (
               <div
                 key={i}
-                className="absolute top-0 bottom-0"
                 style={{
-                  left: line.x,
-                  width: 1,
+                  position: 'absolute', top: 0, bottom: 0,
+                  left: line.x, width: 1,
                   background: line.isMajor
-                    ? 'var(--color-daw-border-bright)'
-                    : 'var(--color-daw-border)',
+                    ? 'rgba(139,127,248,0.2)'
+                    : 'rgba(255,255,255,0.04)',
                   pointerEvents: 'none',
-                  opacity: line.isMajor ? 0.8 : 0.4,
                 }}
               />
             ))}
 
-            {/* MIDI Notes */}
+            {/* Beat number labels */}
+            {beatLines.filter((l) => l.isMajor).map((line, i) => (
+              <div
+                key={i}
+                style={{
+                  position: 'absolute', top: 2, left: line.x + 3,
+                  fontSize: 8, fontWeight: 600,
+                  color: 'rgba(139,127,248,0.35)',
+                  pointerEvents: 'none',
+                  userSelect: 'none',
+                }}
+              >
+                {Math.round(line.x / pxPerBeat / bpb) + 1}
+              </div>
+            ))}
+
+            {/* MIDI notes */}
             {clip.notes.map((note) => {
               const x = beatsToPixels(note.startBeat, pxPerBeat);
               const y = (TOTAL_NOTES - 1 - note.note) * NOTE_HEIGHT;
               const w = Math.max(4, beatsToPixels(note.durationBeats, pxPerBeat) - 1);
               const isSelected = selectedNoteId === note.id;
-              const velAlpha = 0.5 + (note.velocity / 127) * 0.5;
+              const velAlpha = 0.55 + (note.velocity / 127) * 0.45;
 
               return (
                 <div
                   key={note.id}
-                  className="absolute rounded-sm"
                   style={{
-                    left: x,
-                    top: y + 1,
-                    width: w,
-                    height: NOTE_HEIGHT - 2,
-                    background: `rgba(58,194,104,${velAlpha})`,
+                    position: 'absolute',
+                    left: x, top: y + 2, width: w, height: NOTE_HEIGHT - 3,
+                    borderRadius: 3,
+                    background: isSelected
+                      ? `linear-gradient(90deg, rgba(139,127,248,${velAlpha}) 0%, rgba(91,156,248,${velAlpha}) 100%)`
+                      : `linear-gradient(90deg, rgba(32,201,126,${velAlpha}) 0%, rgba(22,160,100,${velAlpha}) 100%)`,
                     border: isSelected
-                      ? '1px solid rgba(255,255,255,0.8)'
-                      : '1px solid rgba(255,255,255,0.2)',
+                      ? '1px solid rgba(255,255,255,0.7)'
+                      : '1px solid rgba(255,255,255,0.18)',
+                    boxShadow: isSelected
+                      ? '0 0 8px rgba(139,127,248,0.5)'
+                      : '0 1px 3px rgba(0,0,0,0.3)',
                     cursor: tool === 'erase' ? 'cell' : 'grab',
                     zIndex: 2,
                     boxSizing: 'border-box',
                   }}
                   onPointerDown={(e) => handleNotePointerDown(e, note, 'move')}
                 >
-                  {/* Resize handle */}
                   <div
-                    className="absolute top-0 bottom-0 right-0"
-                    style={{ width: 6, cursor: 'ew-resize', zIndex: 3 }}
+                    style={{
+                      position: 'absolute', top: 0, bottom: 0, right: 0,
+                      width: 6, cursor: 'ew-resize', zIndex: 3,
+                      borderRadius: '0 3px 3px 0',
+                    }}
                     onPointerDown={(e) => {
                       e.stopPropagation();
                       handleNotePointerDown(e, note, 'resize');
                     }}
-                  />
+                  >
+                    <div style={{
+                      position: 'absolute', top: '50%', right: 1,
+                      transform: 'translateY(-50%)',
+                      width: 1.5, height: 8, borderRadius: 1,
+                      background: 'rgba(255,255,255,0.35)',
+                    }} />
+                  </div>
                 </div>
               );
             })}
@@ -414,22 +526,16 @@ export function PianoRoll({ onClose }: { onClose: () => void }) {
         pxPerBeat={pxPerBeat}
         totalBeats={totalBeats}
         selectedNoteId={selectedNoteId}
-        onVelocityChange={(noteId, vel) => {
-          updateMidiNote(clip.id, noteId, { velocity: vel });
-        }}
+        onVelocityChange={(noteId, vel) => updateMidiNote(clip.id, noteId, { velocity: vel })}
       />
     </div>
   );
 }
 
-// ─── Velocity Lane ─────────────────────────────────────────────────────────────
+// ─── Velocity Lane ────────────────────────────────────────────────────────────
 
 function VelocityLane({
-  clip,
-  pxPerBeat,
-  totalBeats,
-  selectedNoteId,
-  onVelocityChange,
+  clip, pxPerBeat, totalBeats, selectedNoteId, onVelocityChange,
 }: {
   clip: MidiClip;
   pxPerBeat: number;
@@ -440,19 +546,14 @@ function VelocityLane({
   const laneHeight = 48;
   const gridWidth = totalBeats * pxPerBeat;
 
-  function handleVelPointerDown(
-    e: React.PointerEvent<SVGElement>,
-    note: MidiNote
-  ) {
+  function handleVelPointerDown(e: React.PointerEvent<SVGElement>, note: MidiNote) {
     e.stopPropagation();
     const svg = e.currentTarget;
     svg.setPointerCapture(e.pointerId);
     const rect = svg.getBoundingClientRect();
-
     function move(ev: PointerEvent) {
       const y = ev.clientY - rect.top;
-      const vel = Math.max(1, Math.min(127, Math.round(127 * (1 - y / laneHeight))));
-      onVelocityChange(note.id, vel);
+      onVelocityChange(note.id, Math.max(1, Math.min(127, Math.round(127 * (1 - y / laneHeight)))));
     }
     function up() {
       svg.removeEventListener('pointermove', move);
@@ -464,33 +565,35 @@ function VelocityLane({
   }
 
   return (
-    <div
-      className="shrink-0 overflow-x-auto"
-      style={{
-        height: laneHeight,
-        borderTop: '1px solid var(--color-daw-border)',
-        background: 'var(--color-daw-bg)',
-        paddingLeft: KEY_WIDTH,
-      }}
-    >
-      <svg
-        width={gridWidth}
-        height={laneHeight}
-        style={{ display: 'block', cursor: 'ns-resize' }}
-      >
+    <div style={{ ...S.velocityLane, height: laneHeight }}>
+      <svg width={gridWidth} height={laneHeight} style={{ display: 'block', cursor: 'ns-resize' }}>
+        {/* Background grid lines */}
+        {[0.25, 0.5, 0.75].map((frac, i) => (
+          <line key={i}
+            x1={0} y1={laneHeight * frac} x2={gridWidth} y2={laneHeight * frac}
+            stroke="rgba(255,255,255,0.04)" strokeWidth="1"
+          />
+        ))}
+
         {clip.notes.map((note) => {
           const x = note.startBeat * pxPerBeat;
-          const barH = Math.max(2, (note.velocity / 127) * (laneHeight - 4));
+          const barH = Math.max(2, (note.velocity / 127) * (laneHeight - 6));
           const isSelected = selectedNoteId === note.id;
+          const barW = Math.max(2, note.durationBeats * pxPerBeat - 2);
           return (
             <g key={note.id} onPointerDown={(e) => handleVelPointerDown(e, note)}>
               <rect
-                x={x + 1}
-                y={laneHeight - barH}
-                width={Math.max(2, note.durationBeats * pxPerBeat - 2)}
-                height={barH}
-                fill={isSelected ? 'var(--color-daw-accent)' : 'var(--color-daw-green)'}
-                fillOpacity={0.8}
+                x={x + 1} y={laneHeight - barH}
+                width={barW} height={barH}
+                fill={isSelected ? 'rgba(139,127,248,0.85)' : 'rgba(32,201,126,0.65)'}
+                rx="1.5"
+              />
+              {/* Tip highlight */}
+              <rect
+                x={x + 1} y={laneHeight - barH}
+                width={barW} height={2}
+                fill={isSelected ? 'rgba(200,192,255,0.9)' : 'rgba(100,240,180,0.8)'}
+                rx="1"
               />
             </g>
           );
