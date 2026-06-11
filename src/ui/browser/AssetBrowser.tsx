@@ -197,6 +197,7 @@ export function AssetBrowser() {
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
+        data-wubguide-target="import-zone"
         aria-label="Drop or click to import audio"
         title={beginnerModeEnabled ? 'Drop local audio here or click to choose an audio file' : 'Import audio'}
       >

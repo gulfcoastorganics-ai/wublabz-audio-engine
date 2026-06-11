@@ -3,7 +3,6 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useWubGuide } from '../src/ui/assistant/useWubGuide.js';
 
 // ─── Controller mock ──────────────────────────────────────────────────────────
 
@@ -161,9 +160,10 @@ beforeEach(() => {
   } as any);
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   vi.unstubAllGlobals();
+  const { useWubGuide } = await import('../src/ui/assistant/useWubGuide.js');
   useWubGuide.setState({
     beginnerModeEnabled: false,
     assistantOpen: false,
@@ -171,6 +171,7 @@ afterEach(() => {
     guideFloatingLabel: null,
     tutorialActive: false,
     tutorialStepIndex: 0,
+    actionFeedback: null,
   });
 });
 

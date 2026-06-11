@@ -17,6 +17,7 @@ function resetGuideStore() {
     tutorialStepIndex: 0,
     currentResponse: WUB_GUIDE_WELCOME_RESPONSE,
     lastPrompt: '',
+    actionFeedback: null,
   });
 }
 
@@ -52,7 +53,8 @@ describe('WubGuidePanel', () => {
     await waitFor(() => {
       expect(screen.getByText('Import Audio')).toBeInTheDocument();
     });
-    expect(useWubGuide.getState().activeGuideTarget).toBe('browser');
+    expect(screen.getByText('I highlighted it for you.')).toBeInTheDocument();
+    expect(useWubGuide.getState().activeGuideTarget).toBe('import-zone');
   });
 
   it('tutorial next, back, and finish update tutorial state', async () => {
@@ -80,8 +82,19 @@ describe('WubGuidePanel', () => {
 
   it('sets highlight targets for transport, browser, mixer, and export questions', () => {
     expect(answerWubGuidePrompt('How do I press play?').highlightTarget).toBe('play-button');
-    expect(answerWubGuidePrompt('How do I import audio?').highlightTarget).toBe('browser');
+    expect(answerWubGuidePrompt('How do I import audio?').highlightTarget).toBe('import-zone');
     expect(answerWubGuidePrompt('What is the mixer?').highlightTarget).toBe('mixer');
     expect(answerWubGuidePrompt('How do I export WAV?').highlightTarget).toBe('export');
+  });
+
+  it('first beat workflow declares deterministic setup actions', () => {
+    const response = answerWubGuidePrompt('Help me make my first beat');
+
+    expect(response.title).toBe('First Beat Coach');
+    expect(response.actions?.map((action) => action.type)).toEqual([
+      'openBrowser',
+      'createTrack',
+      'focusArrangement',
+    ]);
   });
 });

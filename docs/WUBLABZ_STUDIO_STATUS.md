@@ -26,6 +26,7 @@ Current WubGuide behavior:
 - No external AI API yet.
 - No raw audio upload.
 - Keyword/rule-based responses for common beginner questions.
+- Deterministic action workflows for opening panels, focusing controls, creating starter tracks, and creating starter MIDI clip placeholders.
 - Visual highlight system using `data-wubguide-target` UI targets.
 - Guided tutorial with Next, Back, Skip, and Finish.
 - Quick prompts for tutorial, import help, playback help, mixer help, piano roll help, export help, and a first beat checklist.
@@ -118,7 +119,7 @@ Future AI model integration can be added later, but it must remain optional and 
 Latest documented verification after the Beginner Mode/WubGuide pass:
 
 - 32 test files passing.
-- 141 tests passing.
+- 142 tests passing.
 - Typecheck passing.
 - Lint passing.
 - Build passing.

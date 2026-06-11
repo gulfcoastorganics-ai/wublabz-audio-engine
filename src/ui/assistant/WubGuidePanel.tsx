@@ -9,6 +9,7 @@ export function WubGuidePanel() {
     beginnerModeEnabled,
     assistantOpen,
     currentResponse,
+    actionFeedback,
     lastPrompt,
     tutorialActive,
     tutorialStepIndex,
@@ -25,10 +26,10 @@ export function WubGuidePanel() {
 
   useEffect(() => {
     if (!assistantOpen) return;
-    setAvatarState(tutorialActive ? 'pointing' : 'speaking');
+    setAvatarState(actionFeedback || tutorialActive ? 'pointing' : 'speaking');
     const timeout = window.setTimeout(() => setAvatarState('idle'), 850);
     return () => window.clearTimeout(timeout);
-  }, [assistantOpen, currentResponse.id, tutorialActive, tutorialStepIndex]);
+  }, [actionFeedback, assistantOpen, currentResponse.id, tutorialActive, tutorialStepIndex]);
 
   const canGoBack = tutorialActive && tutorialStepIndex > 0;
   const canGoNext = tutorialActive && tutorialStepIndex < WUB_GUIDE_TUTORIAL_STEPS.length - 1;
@@ -92,6 +93,11 @@ export function WubGuidePanel() {
         <div className="wubguide-message wubguide-message-guide">
           <strong>{currentResponse.title}</strong>
           <p>{currentResponse.body}</p>
+          {actionFeedback && (
+            <div className="wubguide-action-feedback" role="status">
+              {actionFeedback}
+            </div>
+          )}
           {currentResponse.steps && currentResponse.steps.length > 0 && (
             <ol>
               {currentResponse.steps.map((step) => (

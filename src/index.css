@@ -426,6 +426,19 @@ button:hover {
   font-size: 11px;
 }
 
+.wubguide-action-feedback {
+  display: inline-flex;
+  margin-top: 8px;
+  padding: 5px 8px;
+  border: 1px solid rgba(139, 127, 248, 0.34);
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(139, 127, 248, 0.18), rgba(91, 156, 248, 0.08));
+  color: var(--color-text-bright);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
 .wubguide-message-guide {
   background: linear-gradient(135deg, rgba(139, 127, 248, 0.12), rgba(91, 156, 248, 0.052));
 }

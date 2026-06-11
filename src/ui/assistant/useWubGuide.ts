@@ -4,6 +4,7 @@ import {
   WUB_GUIDE_TUTORIAL_STEPS,
   WUB_GUIDE_WELCOME_RESPONSE,
 } from './wubGuideKnowledge.js';
+import { executeWubGuideActions } from './wubGuideWorkflowEngine.js';
 import type { WubGuideResponse, WubGuideStore, WubGuideTarget } from './wubGuideTypes.js';
 
 function responseLabel(response: WubGuideResponse): string | undefined {
@@ -30,6 +31,7 @@ export const useWubGuide = create<WubGuideStore>((set, get) => ({
   tutorialStepIndex: 0,
   currentResponse: WUB_GUIDE_WELCOME_RESPONSE,
   lastPrompt: '',
+  actionFeedback: null,
 
   toggleBeginnerMode() {
     const enabled = !get().beginnerModeEnabled;
@@ -40,6 +42,7 @@ export const useWubGuide = create<WubGuideStore>((set, get) => ({
       guideFloatingLabel: enabled ? 'Beginner Mode is on.' : null,
       currentResponse: enabled ? WUB_GUIDE_WELCOME_RESPONSE : get().currentResponse,
       tutorialActive: enabled ? get().tutorialActive : false,
+      actionFeedback: null,
     });
   },
 
@@ -51,6 +54,7 @@ export const useWubGuide = create<WubGuideStore>((set, get) => ({
       guideFloatingLabel: enabled ? 'Beginner Mode is on.' : null,
       currentResponse: enabled ? WUB_GUIDE_WELCOME_RESPONSE : get().currentResponse,
       tutorialActive: enabled ? get().tutorialActive : false,
+      actionFeedback: null,
     });
   },
 
@@ -68,12 +72,21 @@ export const useWubGuide = create<WubGuideStore>((set, get) => ({
 
   askGuide(prompt) {
     const response = answerWubGuidePrompt(prompt);
+    if (response.actions?.some((action) => action.type === 'startTutorial')) {
+      get().startTutorial();
+      return response;
+    }
+
+    const actionResult = executeWubGuideActions(response.actions);
+    const activeGuideTarget = actionResult.highlightTarget ?? response.highlightTarget ?? null;
     set({
+      beginnerModeEnabled: true,
       assistantOpen: true,
       currentResponse: response,
       lastPrompt: prompt,
-      activeGuideTarget: response.highlightTarget ?? null,
-      guideFloatingLabel: responseLabel(response) ?? null,
+      activeGuideTarget,
+      guideFloatingLabel: actionResult.label ?? responseLabel(response) ?? null,
+      actionFeedback: actionResult.didAct ? 'I highlighted it for you.' : null,
       tutorialActive: false,
     });
     return response;
@@ -90,6 +103,7 @@ export const useWubGuide = create<WubGuideStore>((set, get) => ({
       activeGuideTarget: response.highlightTarget ?? null,
       guideFloatingLabel: WUB_GUIDE_TUTORIAL_STEPS[0]!.label,
       lastPrompt: 'Start tutorial',
+      actionFeedback: 'I highlighted it for you.',
     });
   },
 
@@ -102,6 +116,7 @@ export const useWubGuide = create<WubGuideStore>((set, get) => ({
       currentResponse: response,
       activeGuideTarget: response.highlightTarget ?? null,
       guideFloatingLabel: WUB_GUIDE_TUTORIAL_STEPS[nextIndex]!.label,
+      actionFeedback: 'I highlighted it for you.',
     });
   },
 
@@ -114,6 +129,7 @@ export const useWubGuide = create<WubGuideStore>((set, get) => ({
       currentResponse: response,
       activeGuideTarget: response.highlightTarget ?? null,
       guideFloatingLabel: WUB_GUIDE_TUTORIAL_STEPS[previousIndex]!.label,
+      actionFeedback: 'I highlighted it for you.',
     });
   },
 
@@ -124,6 +140,7 @@ export const useWubGuide = create<WubGuideStore>((set, get) => ({
       activeGuideTarget: null,
       guideFloatingLabel: null,
       currentResponse: WUB_GUIDE_WELCOME_RESPONSE,
+      actionFeedback: null,
     });
   },
 
@@ -133,6 +150,7 @@ export const useWubGuide = create<WubGuideStore>((set, get) => ({
       tutorialStepIndex: WUB_GUIDE_TUTORIAL_STEPS.length - 1,
       activeGuideTarget: 'export',
       guideFloatingLabel: 'Tutorial complete. Save or export when ready.',
+      actionFeedback: 'I highlighted it for you.',
       currentResponse: {
         id: 'tutorial-complete',
         title: 'Tutorial Complete',

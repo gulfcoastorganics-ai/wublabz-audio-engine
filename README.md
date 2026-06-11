@@ -19,13 +19,14 @@ The most recent UI pass added premium glassmorphism visual polish only. It did n
 
 ## Beginner Mode and WubGuide AI
 
-Beginner Mode is a guided UX/help layer for new users. It adds contextual labels, section help buttons, guided highlights, and the WubGuide AI assistant panel.
+Beginner Mode is a guided UX/help layer for new users. It adds contextual labels, section help buttons, guided highlights, deterministic action workflows, and the WubGuide AI assistant panel.
 
 WubGuide AI is local and deterministic for now:
 
 - No external AI API is connected.
 - No audio is uploaded.
 - Questions are answered with keyword/rule-based matching.
+- Action workflows can open panels, focus controls, create starter tracks, and create starter MIDI clip placeholders.
 - Responses can highlight UI targets such as transport, browser, arrangement, mixer, piano roll, save, export, snap, loop, tracks, and clips.
 - The tutorial walks through transport, browser, arrangement, mixer, piano roll, save, and export.
 
@@ -85,7 +86,7 @@ As of the Beginner Mode/WubGuide pass:
 - Typecheck passing.
 - Lint passing.
 - Build passing.
-- Test suite passing: 32 files, 141 tests.
+- Test suite passing: 32 files, 142 tests.
 
 ## Roadmap
 

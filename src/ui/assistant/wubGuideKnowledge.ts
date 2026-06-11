@@ -4,6 +4,7 @@ import type {
   WubGuideTarget,
   WubGuideTutorialStep,
 } from './wubGuideTypes.js';
+import type { WubGuideAction } from './wubGuideActions.js';
 
 export const WUB_GUIDE_QUICK_ACTIONS: WubGuideQuickAction[] = [
   { id: 'tutorial', label: 'Start Tutorial', prompt: 'Start tutorial' },
@@ -12,7 +13,7 @@ export const WUB_GUIDE_QUICK_ACTIONS: WubGuideQuickAction[] = [
   { id: 'mixer', label: 'Mixer Help', prompt: 'What is the mixer?' },
   { id: 'piano-roll', label: 'Piano Roll Help', prompt: 'How do I open the piano roll?' },
   { id: 'export', label: 'Export Help', prompt: 'How do I export WAV?' },
-  { id: 'first-beat', label: 'First Beat Checklist', prompt: 'What should I do first?' },
+  { id: 'first-beat', label: 'First Beat Checklist', prompt: 'Help me make my first beat' },
 ];
 
 export const WUB_GUIDE_TUTORIAL_STEPS: WubGuideTutorialStep[] = [
@@ -74,6 +75,7 @@ type KnowledgeEntry = {
   keywords: string[];
   steps?: string[];
   highlightTarget?: WubGuideTarget;
+  actions?: WubGuideAction[];
 };
 
 const KNOWLEDGE: KnowledgeEntry[] = [
@@ -83,6 +85,7 @@ const KNOWLEDGE: KnowledgeEntry[] = [
     body: 'The Transport is the main control strip for playback, tempo, loop, snap, saving, and exporting.',
     keywords: ['transport', 'controls', 'toolbar'],
     highlightTarget: 'transport',
+    actions: [{ type: 'focusTransport' }],
     steps: [
       'Use Play and Stop for playback.',
       'Edit BPM to change tempo.',
@@ -95,7 +98,8 @@ const KNOWLEDGE: KnowledgeEntry[] = [
     title: 'Import Audio',
     body: 'Use the Browser on the left to bring local audio into WubLabz. Audio stays local in the browser.',
     keywords: ['import', 'audio', 'sample', 'file', 'drop', 'browser'],
-    highlightTarget: 'browser',
+    highlightTarget: 'import-zone',
+    actions: [{ type: 'openBrowser' }],
     steps: [
       'Open Beginner Mode if it is not already on.',
       'Find the Browser panel on the left.',
@@ -109,6 +113,7 @@ const KNOWLEDGE: KnowledgeEntry[] = [
     body: 'The play button starts transport playback. The stop button halts playback and returns the playhead to the beginning.',
     keywords: ['play', 'press play', 'pause', 'stop', 'transport', 'start playback'],
     highlightTarget: 'play-button',
+    actions: [{ type: 'focusTransport' }],
     steps: [
       'Look at the Transport bar at the top.',
       'Press the green Play button to start.',
@@ -121,6 +126,7 @@ const KNOWLEDGE: KnowledgeEntry[] = [
     body: 'BPM controls the tempo of the project. Change it from the BPM number field in the transport.',
     keywords: ['bpm', 'tempo', 'speed'],
     highlightTarget: 'bpm',
+    actions: [{ type: 'focusTransport' }],
     steps: ['Find BPM in the Transport.', 'Click the number field.', 'Type a new tempo, such as 120 or 140.'],
   },
   {
@@ -129,6 +135,7 @@ const KNOWLEDGE: KnowledgeEntry[] = [
     body: 'The Arrangement is the main timeline where tracks, clips, the ruler, and the playhead come together.',
     keywords: ['arrangement', 'timeline', 'view', 'grid', 'lane', 'ruler'],
     highlightTarget: 'arrangement',
+    actions: [{ type: 'focusArrangement' }],
     steps: [
       'Use the ruler to see bars and beats.',
       'Use lanes to organize clips by track.',
@@ -141,6 +148,7 @@ const KNOWLEDGE: KnowledgeEntry[] = [
     body: 'The Mixer balances tracks. Use channel strips for gain, pan, mute, and solo.',
     keywords: ['mixer', 'volume', 'fader', 'pan', 'level'],
     highlightTarget: 'mixer',
+    actions: [{ type: 'openMixer' }],
     steps: [
       'Find the Mixer at the bottom.',
       'Move faders to change track volume.',
@@ -153,7 +161,8 @@ const KNOWLEDGE: KnowledgeEntry[] = [
     title: 'Make a MIDI Clip',
     body: 'MIDI clips live on MIDI tracks. Double-click a MIDI lane or use the track MIDI button to create one.',
     keywords: ['midi clip', 'make midi', 'create midi', 'add midi'],
-    highlightTarget: 'track-header',
+    highlightTarget: 'clip',
+    actions: [{ type: 'createClipPlaceholder' }],
     steps: [
       'Add a MIDI track if one is not visible.',
       'Double-click in a MIDI lane to create a clip.',
@@ -166,6 +175,7 @@ const KNOWLEDGE: KnowledgeEntry[] = [
     body: 'The Piano Roll opens when you double-click a MIDI clip or create a MIDI clip from a MIDI track.',
     keywords: ['piano roll', 'notes', 'midi notes', 'open piano'],
     highlightTarget: 'piano-roll',
+    actions: [{ type: 'openPianoRoll' }],
     steps: [
       'Create or select a MIDI clip.',
       'Double-click the MIDI clip.',
@@ -178,6 +188,7 @@ const KNOWLEDGE: KnowledgeEntry[] = [
     body: 'Save stores the project locally through the studio project system.',
     keywords: ['save', 'save project', 'store'],
     highlightTarget: 'save',
+    actions: [{ type: 'focusSave' }],
     steps: ['Use the Save button in the Transport.', 'Wait for the status message to confirm the save.'],
   },
   {
@@ -186,6 +197,7 @@ const KNOWLEDGE: KnowledgeEntry[] = [
     body: 'Export WAV renders the current project output when you are ready to make an audio file.',
     keywords: ['export', 'wav', 'render', 'bounce'],
     highlightTarget: 'export',
+    actions: [{ type: 'focusExport' }],
     steps: ['Finish your arrangement.', 'Check levels in the Mixer.', 'Click Export WAV in the Transport.'],
   },
   {
@@ -194,6 +206,7 @@ const KNOWLEDGE: KnowledgeEntry[] = [
     body: 'Snap helps clips and edits land on rhythmic grid positions instead of arbitrary times.',
     keywords: ['snap', 'grid', 'quantize'],
     highlightTarget: 'snap',
+    actions: [{ type: 'focusTransport' }],
     steps: ['Turn Snap on in the Transport.', 'Choose a grid value.', 'Move clips or create notes against that grid.'],
   },
   {
@@ -202,6 +215,7 @@ const KNOWLEDGE: KnowledgeEntry[] = [
     body: 'The playhead is the glowing vertical line showing the current playback position in the Arrangement.',
     keywords: ['playhead', 'red line', 'position', 'cursor'],
     highlightTarget: 'arrangement',
+    actions: [{ type: 'focusArrangement' }],
     steps: ['Click the ruler to seek.', 'Press Play.', 'Watch the playhead move across the arrangement.'],
   },
   {
@@ -210,6 +224,7 @@ const KNOWLEDGE: KnowledgeEntry[] = [
     body: 'Mute silences a track while keeping it in the project.',
     keywords: ['mute', 'silence track'],
     highlightTarget: 'mixer',
+    actions: [{ type: 'openMixer' }],
     steps: ['Find the track in the Mixer or track header.', 'Click M to mute.', 'Click M again to unmute.'],
   },
   {
@@ -218,20 +233,23 @@ const KNOWLEDGE: KnowledgeEntry[] = [
     body: 'Solo lets you focus on one track while checking a sound or part.',
     keywords: ['solo', 'listen one track'],
     highlightTarget: 'mixer',
+    actions: [{ type: 'openMixer' }],
     steps: ['Find the track in the Mixer or track header.', 'Click S to solo.', 'Click S again to leave solo mode.'],
   },
   {
     id: 'first',
-    title: 'First Beat Checklist',
-    body: 'A good first session is simple: import a sound, place it in time, press play, then save.',
-    keywords: ['what should i do first', 'first', 'start', 'begin', 'checklist', 'new user'],
-    highlightTarget: 'browser',
+    title: 'First Beat Coach',
+    body: 'I set up the studio path for you: Browser is available, a starter track exists, and the Arrangement is ready for your first clip.',
+    keywords: ['what should i do first', 'first', 'start', 'begin', 'checklist', 'new user', 'first beat', 'make my first beat'],
+    highlightTarget: 'arrangement',
+    actions: [{ type: 'openBrowser' }, { type: 'createTrack' }, { type: 'focusArrangement' }],
     steps: [
-      'Import one audio file from the Browser.',
-      'Press Play in the Transport.',
-      'Add a MIDI track if you want to sketch notes.',
-      'Use the Mixer to balance volume.',
-      'Save the project, then Export WAV when ready.',
+      'Step 1: I opened the Browser.',
+      'Step 2: Use the highlighted import area to drop or choose audio.',
+      'Step 3: I made sure there is a track to start with.',
+      'Step 4: I focused the Arrangement where clips become your beat.',
+      'Step 5: Drag imported clips into the timeline lanes.',
+      'Next step: ask "How do I press play?" when your first clip is in place.',
     ],
   },
   {
@@ -240,6 +258,7 @@ const KNOWLEDGE: KnowledgeEntry[] = [
     body: 'Loop repeats a selected time range, which is useful when editing a small section.',
     keywords: ['loop', 'repeat', 'range'],
     highlightTarget: 'loop',
+    actions: [{ type: 'focusTransport' }],
     steps: ['Enable Loop in the Transport.', 'Set start and end seconds.', 'Press Play to hear that range repeat.'],
   },
 ];
@@ -277,6 +296,7 @@ export function answerWubGuidePrompt(prompt: string): WubGuideResponse {
       body: 'The tutorial walks through the Transport, Browser, Arrangement, Mixer, Piano Roll, and export controls.',
       steps: ['Click Start Tutorial.', 'Use Next and Back to move through the guide.', 'Finish or Skip anytime.'],
       highlightTarget: 'transport',
+      actions: [{ type: 'startTutorial' }],
       quickActions: WUB_GUIDE_QUICK_ACTIONS,
     };
   }
@@ -294,5 +314,6 @@ export function answerWubGuidePrompt(prompt: string): WubGuideResponse {
     steps: match.steps,
     highlightTarget: match.highlightTarget,
     quickActions: WUB_GUIDE_QUICK_ACTIONS,
+    actions: match.actions,
   };
 }

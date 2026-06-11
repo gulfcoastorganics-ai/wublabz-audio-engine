@@ -1,3 +1,5 @@
+import type { WubGuideAction } from './wubGuideActions.js';
+
 export type WubGuideTarget =
   | 'transport'
   | 'play-button'
@@ -11,7 +13,8 @@ export type WubGuideTarget =
   | 'snap'
   | 'loop'
   | 'track-header'
-  | 'clip';
+  | 'clip'
+  | 'import-zone';
 
 export type WubGuideQuickAction = {
   id: string;
@@ -26,6 +29,7 @@ export type WubGuideResponse = {
   steps?: string[];
   highlightTarget?: WubGuideTarget;
   quickActions?: WubGuideQuickAction[];
+  actions?: WubGuideAction[];
 };
 
 export type WubGuideAvatarState =
@@ -52,6 +56,7 @@ export type BeginnerModeState = {
   tutorialStepIndex: number;
   currentResponse: WubGuideResponse;
   lastPrompt: string;
+  actionFeedback: string | null;
 };
 
 export type BeginnerModeActions = {
