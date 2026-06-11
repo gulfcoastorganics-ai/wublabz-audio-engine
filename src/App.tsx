@@ -1,176 +1,178 @@
-import React, { Component, type ErrorInfo, type ReactNode, useState } from 'react';
-import { WubPad } from './wubpad-integration/WubPad';
-import { EngineMonitor } from './wubpad-integration/EngineMonitor';
+import React, { Component, type ErrorInfo, type ReactNode, useEffect, useRef } from 'react';
+import { useStudioStore } from './state/useStudioStore.js';
+import { TransportBar } from './ui/transport/TransportBar.js';
+import { ArrangementView } from './ui/playlist/ArrangementView.js';
+import { PianoRoll } from './ui/pianoRoll/PianoRoll.js';
+import { MixerPanel } from './ui/mixer/MixerPanel.js';
+import { AssetBrowser } from './ui/browser/AssetBrowser.js';
+import { WubPad } from './wubpad-integration/WubPad.js';
+import { EngineMonitor } from './wubpad-integration/EngineMonitor.js';
 
-type AppView = 'pad' | 'engine';
+type AppView = 'studio' | 'pad' | 'engine';
 
-type ErrorBoundaryProps = {
-  children: ReactNode;
-  boundaryKey: string;
-};
+// ─── Error boundary ───────────────────────────────────────────────────────────
 
-type ErrorBoundaryState = {
-  error: Error | null;
-};
-
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  state: ErrorBoundaryState = { error: null };
-
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+class ErrorBoundary extends Component<
+  { children: ReactNode; boundaryKey: string },
+  { error: Error | null }
+> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) {
     return { error };
   }
-
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('WubPad render boundary caught an error', error, errorInfo);
-  }
-
-  componentDidUpdate(prevProps: ErrorBoundaryProps) {
+  componentDidUpdate(prevProps: { boundaryKey: string }) {
     if (prevProps.boundaryKey !== this.props.boundaryKey && this.state.error) {
       this.setState({ error: null });
     }
   }
-
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('[WubLabz] Uncaught error:', error, info);
+  }
   render() {
-    if (!this.state.error) {
-      return this.props.children;
+    if (this.state.error) {
+      return (
+        <div
+          className="p-4 font-mono text-xs"
+          style={{ color: 'var(--color-daw-red)', background: '#1a0000' }}
+        >
+          <div className="font-bold mb-1">Error</div>
+          <pre style={{ whiteSpace: 'pre-wrap' }}>{this.state.error.message}</pre>
+        </div>
+      );
     }
-
-    return (
-      <section style={styles.errorPanel}>
-        <h2 style={styles.errorTitle}>Render Error</h2>
-        <p style={styles.errorText}>
-          A WubPad component crashed during render. The shell is still available so you can switch tabs or inspect the error.
-        </p>
-        <pre style={styles.errorDetails}>{this.state.error.message}</pre>
-      </section>
-    );
+    return this.props.children;
   }
 }
 
+// ─── Main app ─────────────────────────────────────────────────────────────────
+
 function App() {
-  const [view, setView] = useState<AppView>('pad');
+  const { initialize, isPlaying, tickPlayhead, pianoRollClipId, openPianoRoll, showMixer, showBrowser } =
+    useStudioStore();
+
+  const viewRef = useRef<AppView>('studio');
+  const [view, setViewState] = React.useState<AppView>('studio');
+  const rafRef = useRef<number>(0);
+
+  function setView(v: AppView) {
+    viewRef.current = v;
+    setViewState(v);
+  }
+
+  // Initialize engine once on mount
+  useEffect(() => {
+    void initialize();
+  }, [initialize]);
+
+  // RAF loop for playhead — only runs while playing
+  useEffect(() => {
+    if (!isPlaying) {
+      cancelAnimationFrame(rafRef.current);
+      return;
+    }
+    function tick() {
+      tickPlayhead();
+      rafRef.current = requestAnimationFrame(tick);
+    }
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [isPlaying, tickPlayhead]);
 
   return (
-    <div style={styles.shell}>
-      <header style={styles.header}>
-        <div>
-          <h1 style={styles.title}>WubLabz Control Surface</h1>
-          <p style={styles.subtitle}>Local WubPad and engine dashboard</p>
-        </div>
-      </header>
+    <div
+      className="flex flex-col"
+      style={{ height: '100vh', width: '100vw', overflow: 'hidden' }}
+    >
+      {/* Top nav: app view switcher */}
+      <div
+        className="flex items-center gap-1 px-2 h-7 shrink-0"
+        style={{
+          background: 'var(--color-daw-bg)',
+          borderBottom: '1px solid var(--color-daw-border)',
+        }}
+      >
+        {(['studio', 'pad', 'engine'] as AppView[]).map((v) => (
+          <button
+            key={v}
+            onClick={() => setView(v)}
+            className="px-3 h-5 rounded text-xs capitalize hover:opacity-80"
+            style={{
+              background: view === v ? 'var(--color-daw-accent-dim)' : 'transparent',
+              color: view === v ? '#fff' : 'var(--color-daw-text-dim)',
+            }}
+          >
+            {v === 'studio' ? 'WubLabz Studio' : v === 'pad' ? 'WubPad' : 'Engine'}
+          </button>
+        ))}
+      </div>
 
-      <nav style={styles.tabs} aria-label="WubLabz views">
-        <button
-          type="button"
-          onClick={() => setView('pad')}
-          style={{ ...styles.tabButton, ...(view === 'pad' ? styles.activeTabButton : {}) }}
-        >
-          WubPad
-        </button>
-        <button
-          type="button"
-          onClick={() => setView('engine')}
-          style={{ ...styles.tabButton, ...(view === 'engine' ? styles.activeTabButton : {}) }}
-        >
-          WubLabz Engine Dashboard
-        </button>
-      </nav>
-
-      <section style={styles.instructions} aria-label="Connection instructions">
-        <strong>Connection:</strong> keep the engine running at <code>http://127.0.0.1:3001/health</code>, open this frontend at{' '}
-        <code>http://localhost:3000</code>, and connect WubPad settings to <code>ws://127.0.0.1:3001</code>.
-      </section>
-
-      <main style={styles.main}>
+      {view === 'studio' ? (
+        <StudioLayout
+          pianoRollClipId={pianoRollClipId}
+          showMixer={showMixer}
+          showBrowser={showBrowser}
+          onClosePianoRoll={() => openPianoRoll(null)}
+        />
+      ) : (
         <ErrorBoundary boundaryKey={view}>
-          {view === 'pad' ? <WubPad /> : <EngineMonitor />}
+          <div className="flex-1 overflow-auto">
+            {view === 'pad' ? <WubPad /> : <EngineMonitor />}
+          </div>
         </ErrorBoundary>
-      </main>
+      )}
     </div>
   );
 }
 
-const styles: Record<string, React.CSSProperties> = {
-  shell: {
-    backgroundColor: '#0a0a0a',
-    minHeight: '100vh',
-    color: '#fff',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-  },
-  header: {
-    padding: '1rem 1rem 0.75rem',
-    borderBottom: '1px solid #262626',
-    backgroundColor: '#141414'
-  },
-  title: {
-    margin: 0,
-    fontSize: '1.25rem',
-    lineHeight: 1.2,
-    letterSpacing: 0
-  },
-  subtitle: {
-    margin: '0.25rem 0 0',
-    color: '#a8a8a8',
-    fontSize: '0.85rem'
-  },
-  tabs: {
-    display: 'flex',
-    gap: '0.5rem',
-    padding: '0.75rem 1rem',
-    borderBottom: '1px solid #262626',
-    backgroundColor: '#101010',
-    overflowX: 'auto'
-  },
-  tabButton: {
-    backgroundColor: '#1c1c1c',
-    border: '1px solid #3a3a3a',
-    borderRadius: '4px',
-    color: '#cfcfcf',
-    cursor: 'pointer',
-    fontWeight: 700,
-    minHeight: '40px',
-    padding: '0.55rem 0.75rem',
-    whiteSpace: 'nowrap'
-  },
-  activeTabButton: {
-    borderColor: '#00ffcc',
-    color: '#00ffcc'
-  },
-  instructions: {
-    padding: '0.75rem 1rem',
-    backgroundColor: '#151515',
-    borderBottom: '1px solid #262626',
-    color: '#d8d8d8',
-    fontSize: '0.85rem',
-    lineHeight: 1.5
-  },
-  main: {
-    minHeight: 'calc(100vh - 170px)'
-  },
-  errorPanel: {
-    margin: '1rem',
-    padding: '1rem',
-    border: '1px solid #ff6b6b',
-    borderRadius: '4px',
-    backgroundColor: '#260f0f',
-    color: '#fff'
-  },
-  errorTitle: {
-    margin: 0,
-    color: '#ff8c8c',
-    fontSize: '1rem'
-  },
-  errorText: {
-    margin: '0.5rem 0',
-    color: '#f2d0d0'
-  },
-  errorDetails: {
-    margin: 0,
-    overflowX: 'auto',
-    whiteSpace: 'pre-wrap',
-    color: '#fff',
-    fontSize: '0.8rem'
-  }
-};
+// ─── Studio layout ────────────────────────────────────────────────────────────
+
+function StudioLayout({
+  pianoRollClipId,
+  showMixer,
+  showBrowser,
+  onClosePianoRoll,
+}: {
+  pianoRollClipId: string | null;
+  showMixer: boolean;
+  showBrowser: boolean;
+  onClosePianoRoll: () => void;
+}) {
+  return (
+    <div className="flex flex-col flex-1 overflow-hidden">
+      {/* Transport */}
+      <TransportBar />
+
+      {/* Body: browser + arrangement */}
+      <div className="flex flex-1 overflow-hidden">
+        {showBrowser && (
+          <ErrorBoundary boundaryKey="browser">
+            <AssetBrowser />
+          </ErrorBoundary>
+        )}
+
+        <div className="flex flex-col flex-1 overflow-hidden">
+          {/* Arrangement view */}
+          <ErrorBoundary boundaryKey="arrangement">
+            <ArrangementView />
+          </ErrorBoundary>
+
+          {/* Piano Roll (docked below arrangement when open) */}
+          {pianoRollClipId && (
+            <ErrorBoundary boundaryKey={`piano-${pianoRollClipId}`}>
+              <PianoRoll onClose={onClosePianoRoll} />
+            </ErrorBoundary>
+          )}
+
+          {/* Mixer (docked at bottom) */}
+          {showMixer && (
+            <ErrorBoundary boundaryKey="mixer">
+              <MixerPanel />
+            </ErrorBoundary>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default App;
