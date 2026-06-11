@@ -1,10 +1,14 @@
-import React, { useCallback, useState } from 'react';
-import { useStudioStore } from '../../state/useStudioStore.js';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { meterRegistry } from '../../audio/metering/MeterRegistry.js';
+import { createSilentMeterLevel, type MeterLevel, type MeterSample } from '../../audio/metering/meterTypes.js';
+import { useMeterLevels } from '../../audio/metering/useMeterLevels.js';
+import { useStudioStore, studioController } from '../../state/useStudioStore.js';
 import type { MixerChannelState, Track } from '../../lib/project/projectSchema.js';
 import { useWubGuide } from '../assistant/useWubGuide.js';
 
-const CHANNEL_WIDTH = 84;
+const CHANNEL_WIDTH = 100;
 const FADER_HEIGHT = 116;
+const METER_SEGMENTS = 18;
 
 function gainToDb(v: number): string {
   if (v <= 0) return '-∞';
@@ -20,8 +24,12 @@ type ChannelViewItem = {
 // ─── Panel ────────────────────────────────────────────────────────────────────
 
 export function MixerPanel() {
-  const { project, updateChannel } = useStudioStore();
+  const project = useStudioStore((state) => state.project);
+  const isPlaying = useStudioStore((state) => state.isPlaying);
+  const position = useStudioStore((state) => state.position);
+  const updateChannel = useStudioStore((state) => state.updateChannel);
   const { beginnerModeEnabled, askGuide, markProgress } = useWubGuide();
+  const meterSnapshot = useMeterLevels();
   const channels: ChannelViewItem[] = project.tracks.map((track) => ({
     track,
     state: project.mixerState[track.id] ?? {
@@ -31,6 +39,50 @@ export function MixerPanel() {
       sendLevels: {},
     },
   }));
+  const trackIdsKey = useMemo(() => channels.map(({ track }) => track.id).join('|'), [channels]);
+  const latestStateRef = useRef({ project, isPlaying, position, channels });
+
+  useEffect(() => {
+    latestStateRef.current = { project, isPlaying, position, channels };
+  }, [project, isPlaying, position, channels]);
+
+  useEffect(() => {
+    meterRegistry.registerChannel('master', { kind: 'master', label: 'Master' });
+    for (const { track } of channels) {
+      meterRegistry.registerChannel(track.id, { kind: 'track', label: track.name });
+    }
+
+    return () => {
+      for (const { track } of channels) {
+        meterRegistry.unregisterChannel(track.id);
+      }
+      meterRegistry.unregisterChannel('master');
+    };
+  }, [trackIdsKey]);
+
+  useEffect(() => {
+    if (!isPlaying) return;
+
+    let frame = 0;
+    const tick = () => {
+      const { project: currentProject, isPlaying: playing, position: currentPosition, channels: currentChannels } = latestStateRef.current;
+      const busLevels = studioController.busGraph.getBusLevels();
+    meterRegistry.updateLevels(buildMeterSamples({
+        project: currentProject,
+        channels: currentChannels,
+        position: currentPosition,
+        isPlaying: playing,
+        busLevels,
+      }));
+
+      if (playing || meterRegistry.hasActiveLevels()) {
+        frame = requestFrame(tick);
+      }
+    };
+
+    frame = requestFrame(tick);
+    return () => cancelFrame(frame);
+  }, [isPlaying, trackIdsKey]);
 
   return (
     <div
@@ -83,6 +135,8 @@ export function MixerPanel() {
             key={track.id}
             track={track}
             channel={state}
+            level={meterSnapshot.levels[track.id] ?? createSilentMeterLevel(track.id, meterSnapshot.timestamp)}
+            peakHold={meterSnapshot.peakHolds[track.id] ?? 0}
             onChange={(patch) => {
               markProgress({ openedMixer: true });
               updateChannel(track.id, patch);
@@ -115,7 +169,10 @@ export function MixerPanel() {
           }}>
             Master
           </div>
-          <MasterFader />
+          <MasterFader
+            level={meterSnapshot.levels.master ?? createSilentMeterLevel('master', meterSnapshot.timestamp)}
+            peakHold={meterSnapshot.peakHolds.master ?? 0}
+          />
         </div>
       </div>
     </div>
@@ -126,10 +183,13 @@ export function MixerPanel() {
 
 function ChannelStrip({
   track, channel, onChange,
+  level, peakHold,
 }: {
   track: Track;
   channel: MixerChannelState;
   onChange: (patch: Partial<MixerChannelState>) => void;
+  level: MeterLevel;
+  peakHold: number;
 }) {
   const [hovered, setHovered] = useState(false);
 
@@ -179,6 +239,16 @@ function ChannelStrip({
   const trackColor = track.color ?? '#8B5CF6';
 
   const isHighlighted = channel.solo || hovered;
+  const meterSegments: Array<{ index: number; threshold: number; zone: 'green' | 'yellow' | 'red'; active: boolean; rmsActive: boolean }> = Array.from({ length: METER_SEGMENTS }, (_, index) => {
+    const threshold = (index + 1) / METER_SEGMENTS;
+    return {
+      index,
+      threshold,
+      zone: threshold > 0.86 ? 'red' : threshold > 0.62 ? 'yellow' : 'green',
+      active: level.peak >= threshold,
+      rmsActive: level.rms >= threshold,
+    };
+  });
 
   return (
     <div
@@ -219,6 +289,70 @@ function ChannelStrip({
         lineHeight: 1, padding: '0 4px',
       }} title={track.name}>
         {track.name}
+      </div>
+
+      {/* Meter + fader row */}
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, width: '100%', justifyContent: 'center' }}>
+        <LevelMeter
+          label={track.name}
+          level={level}
+          peakHold={peakHold}
+          segments={meterSegments}
+        />
+
+        <div
+          style={{
+            position: 'relative', width: 24, borderRadius: 6, cursor: 'ns-resize',
+            height: FADER_HEIGHT,
+            background: 'linear-gradient(180deg, rgba(0,0,0,0.64), rgba(8,12,26,0.78))',
+            border: '1px solid rgba(255,255,255,0.075)',
+            boxShadow: 'inset 0 0 10px rgba(0,0,0,0.5)',
+          }}
+          onPointerDown={handleFaderPointerDown}
+          onDoubleClick={() => onChange({ gain: 1 })}
+        >
+          {/* Level ticks */}
+          {[0, 0.33, 0.67, 1].map((v, i) => (
+            <div key={i} style={{
+              position: 'absolute', left: 0, right: 0,
+              top: FADER_HEIGHT * (1 - v / 1.5), height: 1,
+              background: 'rgba(255,255,255,0.08)',
+            }} />
+          ))}
+          {/* Unity (0dB) tick */}
+          <div style={{
+            position: 'absolute', left: 0, right: 0,
+            top: FADER_HEIGHT * (1 - 1 / 1.5), height: 1,
+            background: 'rgba(139,127,248,0.48)',
+          }} />
+
+          {/* Gradient fill — purple to indigo */}
+          <div style={{
+            position: 'absolute', left: 0, right: 0, bottom: 0, borderRadius: '0 0 6px 6px',
+            top: faderY,
+            background: channel.solo
+              ? 'linear-gradient(to top, rgba(34,201,126,0.6), rgba(22,160,100,0.35))'
+              : `linear-gradient(to top, #8b7ff8, #5b9cf8)`,
+            opacity: 0.55 + faderPos * 0.3,
+          }} />
+
+          {/* Fader cap */}
+          <div style={{
+            position: 'absolute', left: -3, right: -3,
+            top: faderY - 8, height: 16, borderRadius: 6,
+            background: 'linear-gradient(180deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%)',
+            border: '1px solid rgba(255,255,255,0.28)',
+            boxShadow: '0 2px 9px rgba(0,0,0,0.48), 0 0 12px rgba(139,127,248,0.26), inset 0 1px 0 rgba(255,255,255,0.18)',
+          }}>
+            {[-2.5, 0, 2.5].map((dy, i) => (
+              <div key={i} style={{
+                position: 'absolute', left: 5, right: 5,
+                top: `calc(50% + ${dy}px)`, height: 1,
+                background: 'rgba(255,255,255,0.4)',
+              }} />
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* M / S */}
@@ -271,61 +405,6 @@ function ChannelStrip({
         </div>
       </div>
 
-      {/* Fader */}
-      <div
-        style={{
-          position: 'relative', width: 24, borderRadius: 6, cursor: 'ns-resize',
-          height: FADER_HEIGHT,
-          background: 'linear-gradient(180deg, rgba(0,0,0,0.64), rgba(8,12,26,0.78))',
-          border: '1px solid rgba(255,255,255,0.075)',
-          boxShadow: 'inset 0 0 10px rgba(0,0,0,0.5)',
-        }}
-        onPointerDown={handleFaderPointerDown}
-        onDoubleClick={() => onChange({ gain: 1 })}
-      >
-        {/* Level ticks */}
-        {[0, 0.33, 0.67, 1].map((v, i) => (
-          <div key={i} style={{
-            position: 'absolute', left: 0, right: 0,
-            top: FADER_HEIGHT * (1 - v / 1.5), height: 1,
-            background: 'rgba(255,255,255,0.08)',
-          }} />
-        ))}
-        {/* Unity (0dB) tick */}
-        <div style={{
-          position: 'absolute', left: 0, right: 0,
-          top: FADER_HEIGHT * (1 - 1 / 1.5), height: 1,
-          background: 'rgba(139,127,248,0.48)',
-        }} />
-
-        {/* Gradient fill — purple to indigo */}
-        <div style={{
-          position: 'absolute', left: 0, right: 0, bottom: 0, borderRadius: '0 0 6px 6px',
-          top: faderY,
-          background: channel.solo
-            ? 'linear-gradient(to top, rgba(34,201,126,0.6), rgba(22,160,100,0.35))'
-            : `linear-gradient(to top, #8b7ff8, #5b9cf8)`,
-          opacity: 0.55 + faderPos * 0.3,
-        }} />
-
-        {/* Fader cap */}
-        <div style={{
-          position: 'absolute', left: -3, right: -3,
-          top: faderY - 8, height: 16, borderRadius: 6,
-          background: 'linear-gradient(180deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%)',
-          border: '1px solid rgba(255,255,255,0.28)',
-          boxShadow: '0 2px 9px rgba(0,0,0,0.48), 0 0 12px rgba(139,127,248,0.26), inset 0 1px 0 rgba(255,255,255,0.18)',
-        }}>
-          {[-2.5, 0, 2.5].map((dy, i) => (
-            <div key={i} style={{
-              position: 'absolute', left: 5, right: 5,
-              top: `calc(50% + ${dy}px)`, height: 1,
-              background: 'rgba(255,255,255,0.4)',
-            }} />
-          ))}
-        </div>
-      </div>
-
       {/* dB readout */}
       <div style={{
         fontSize: 10, fontFamily: 'monospace', fontWeight: 500, lineHeight: 1,
@@ -333,6 +412,45 @@ function ChannelStrip({
       }}>
         {gainToDb(channel.gain)}
       </div>
+    </div>
+  );
+}
+
+function LevelMeter({
+  label,
+  level,
+  peakHold,
+  segments,
+}: {
+  label: string;
+  level: MeterLevel;
+  peakHold: number;
+  segments: Array<{ index: number; threshold: number; zone: 'green' | 'yellow' | 'red'; active: boolean; rmsActive: boolean }>;
+}) {
+  return (
+    <div
+      className="mixer-meter-well"
+      aria-label={`${label} level meter`}
+      data-clipping={level.clipping ? 'true' : 'false'}
+    >
+      <div className="mixer-meter-glass" aria-hidden="true" />
+      <div className="mixer-meter-segment-stack" aria-hidden="true">
+        {segments.map((segment) => (
+          <span
+            key={segment.index}
+            className="mixer-meter-segment"
+            data-zone={segment.zone}
+            data-active={segment.active ? 'true' : 'false'}
+            data-rms={segment.rmsActive ? 'true' : 'false'}
+          />
+        ))}
+      </div>
+      <span
+        className="mixer-meter-peak"
+        aria-hidden="true"
+        style={{ bottom: `${Math.max(0, Math.min(1, peakHold)) * 100}%` }}
+      />
+      {level.clipping && <span className="mixer-meter-clip" aria-hidden="true" />}
     </div>
   );
 }
@@ -364,7 +482,13 @@ function MixerBtn({
 
 // ─── Master fader ─────────────────────────────────────────────────────────────
 
-function MasterFader() {
+function MasterFader({
+  level,
+  peakHold,
+}: {
+  level: MeterLevel;
+  peakHold: number;
+}) {
   const [vol, setVol] = useState(1);
   const faderPos = Math.max(0, Math.min(1, vol / 1.5));
   const faderY = FADER_HEIGHT * (1 - faderPos);
@@ -387,36 +511,53 @@ function MasterFader() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-      <div
-        style={{
-          position: 'relative', width: 24, borderRadius: 6, cursor: 'ns-resize',
-          height: FADER_HEIGHT,
-          background: 'linear-gradient(180deg, rgba(0,0,0,0.66), rgba(8,12,26,0.8))',
-          border: '1px solid rgba(139,127,248,0.24)',
-        }}
-        onPointerDown={handlePointerDown}
-        onDoubleClick={() => setVol(1)}
-      >
-        <div style={{
-          position: 'absolute', left: 0, right: 0, bottom: 0, borderRadius: '0 0 6px 6px',
-          top: faderY,
-          background: 'linear-gradient(to top, #8b7ff8, #5b9cf8)',
-          opacity: 0.6 + faderPos * 0.3,
-        }} />
-        <div style={{
-          position: 'absolute', left: -3, right: -3,
-          top: faderY - 8, height: 16, borderRadius: 6,
-          background: 'linear-gradient(180deg, rgba(238,238,255,0.35) 0%, rgba(139,127,248,0.2) 100%)',
-          border: '1px solid rgba(139,127,248,0.48)',
-          boxShadow: '0 0 14px rgba(139,127,248,0.38), inset 0 1px 0 rgba(255,255,255,0.16)',
-        }}>
-          {[-2.5, 0, 2.5].map((dy, i) => (
-            <div key={i} style={{
-              position: 'absolute', left: 5, right: 5,
-              top: `calc(50% + ${dy}px)`, height: 1,
-              background: 'rgba(255,255,255,0.45)',
-            }} />
-          ))}
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6 }}>
+        <LevelMeter
+          label="Master"
+          level={level}
+          peakHold={peakHold}
+          segments={Array.from({ length: METER_SEGMENTS }, (_, index) => {
+            const threshold = (index + 1) / METER_SEGMENTS;
+            return {
+              index,
+              threshold,
+              zone: threshold > 0.86 ? 'red' : threshold > 0.62 ? 'yellow' : 'green',
+              active: level.peak >= threshold,
+              rmsActive: level.rms >= threshold,
+            };
+          })}
+        />
+        <div
+          style={{
+            position: 'relative', width: 24, borderRadius: 6, cursor: 'ns-resize',
+            height: FADER_HEIGHT,
+            background: 'linear-gradient(180deg, rgba(0,0,0,0.66), rgba(8,12,26,0.8))',
+            border: '1px solid rgba(139,127,248,0.24)',
+          }}
+          onPointerDown={handlePointerDown}
+          onDoubleClick={() => setVol(1)}
+        >
+          <div style={{
+            position: 'absolute', left: 0, right: 0, bottom: 0, borderRadius: '0 0 6px 6px',
+            top: faderY,
+            background: 'linear-gradient(to top, #8b7ff8, #5b9cf8)',
+            opacity: 0.6 + faderPos * 0.3,
+          }} />
+          <div style={{
+            position: 'absolute', left: -3, right: -3,
+            top: faderY - 8, height: 16, borderRadius: 6,
+            background: 'linear-gradient(180deg, rgba(238,238,255,0.35) 0%, rgba(139,127,248,0.2) 100%)',
+            border: '1px solid rgba(139,127,248,0.48)',
+            boxShadow: '0 0 14px rgba(139,127,248,0.38), inset 0 1px 0 rgba(255,255,255,0.16)',
+          }}>
+            {[-2.5, 0, 2.5].map((dy, i) => (
+              <div key={i} style={{
+                position: 'absolute', left: 5, right: 5,
+                top: `calc(50% + ${dy}px)`, height: 1,
+                background: 'rgba(255,255,255,0.45)',
+              }} />
+            ))}
+          </div>
         </div>
       </div>
       <div style={{ fontSize: 10, fontFamily: 'monospace', color: 'rgba(139,127,248,0.72)', lineHeight: 1 }}>
@@ -424,4 +565,163 @@ function MasterFader() {
       </div>
     </div>
   );
+}
+
+function buildMeterSamples({
+  project,
+  channels,
+  position,
+  isPlaying,
+  busLevels,
+}: {
+  project: {
+    bpm: number;
+    tracks: Track[];
+    audioClips: Array<{ trackId: string; startTime: number; endTime: number; clipGain: number; type: 'audio' | 'midi' }>;
+    midiClips: Array<{ trackId: string; startTime: number; endTime: number; clipGain: number; type: 'audio' | 'midi' }>;
+    mixerState: Record<string, MixerChannelState>;
+  };
+  channels: ChannelViewItem[];
+  position: number;
+  isPlaying: boolean;
+  busLevels: Record<string, number>;
+}): MeterSample[] {
+  const samples: MeterSample[] = [];
+  const hasSolo = channels.some(({ state }) => state.solo || project.mixerState[state.trackId]?.solo);
+  const channelLevels = channels.map(({ track }) =>
+    buildTrackMeterLevel({
+      track,
+      channel: project.mixerState[track.id] ?? defaultChannelState(track.id),
+      project,
+      position,
+      isPlaying,
+      hasSolo,
+    })
+  );
+
+  samples.push(...channelLevels);
+  samples.push(buildMasterMeterLevel(channelLevels, busLevels, position, isPlaying));
+  return samples;
+}
+
+function buildTrackMeterLevel({
+  track,
+  channel,
+  project,
+  position,
+  isPlaying,
+  hasSolo,
+}: {
+  track: Track;
+  channel: MixerChannelState;
+  project: {
+    bpm: number;
+    audioClips: Array<{ trackId: string; startTime: number; endTime: number; clipGain: number; type: 'audio' | 'midi' }>;
+    midiClips: Array<{ trackId: string; startTime: number; endTime: number; clipGain: number; type: 'audio' | 'midi' }>;
+  };
+  position: number;
+  isPlaying: boolean;
+  hasSolo: boolean;
+}): MeterSample {
+  const channelGain = clamp01((channel.gain ?? track.gain ?? 1) / 1.5);
+  const muted = Boolean(channel.mute || track.mute);
+  const soloed = Boolean(channel.solo || track.solo);
+  const clips = [
+    ...project.audioClips.filter((clip) => clip.trackId === track.id),
+    ...project.midiClips.filter((clip) => clip.trackId === track.id),
+  ];
+
+  if (!isPlaying || clips.length === 0 || (hasSolo && !soloed) || (muted && !soloed)) {
+    return { channelId: track.id, peak: 0, rms: 0, clipping: false };
+  }
+
+  const activeClip = clips.find((clip) => position >= clip.startTime && position <= clip.endTime);
+  if (!activeClip) {
+    return { channelId: track.id, peak: 0, rms: 0, clipping: false };
+  }
+
+  const clipSpan = Math.max(activeClip.endTime - activeClip.startTime, 0.1);
+  const progress = Math.max(0, Math.min(1, (position - activeClip.startTime) / clipSpan));
+  const motion = 0.34 + (0.66 * Math.abs(Math.sin((position * 7.35) + (track.order * 0.77) + (progress * Math.PI))));
+  const clipEnergy = activeClip.clipGain * (activeClip.type === 'audio' ? 0.94 : 0.82);
+  const panBias = 1 - Math.min(0.1, Math.abs(channel.pan) * 0.05);
+  const peak = clamp01(clipEnergy * channelGain * panBias * motion);
+  const rms = clamp01(peak * 0.72 + (activeClip.type === 'audio' ? 0.03 : 0.015));
+
+  return {
+    channelId: track.id,
+    peak,
+    rms,
+    clipping: peak >= 0.98 || (peak >= 0.94 && activeClip.type === 'audio' && channelGain > 0.9),
+  };
+}
+
+function buildMasterMeterLevel(
+  channelLevels: MeterSample[],
+  busLevels: Record<string, number>,
+  position: number,
+  isPlaying: boolean
+): MeterSample {
+  const busMaster = dbToLinear(busLevels.master);
+  const channelPeak = channelLevels.reduce((max, level) => Math.max(max, level.peak), 0);
+  const motion = isPlaying ? 0.92 + (0.08 * Math.abs(Math.sin(position * 2.1))) : 0;
+  const peak = clamp01(Math.max(busMaster, channelPeak * motion));
+  const rms = clamp01(Math.max(dbToLinear(busLevels.master) * 0.78, channelLevels.reduce((sum, level) => sum + level.rms, 0) / Math.max(1, channelLevels.length)));
+
+  return {
+    channelId: 'master',
+    peak,
+    rms,
+    clipping: peak >= 0.98 || dbToLinear(busLevels.master) >= 0.98,
+  };
+}
+
+function dbToLinear(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value)) return 0;
+  if (value <= -60) return 0;
+  return clamp01(Math.pow(10, value / 20));
+}
+
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
+type AnimationFrameCallback = (time: number) => void;
+
+function requestFrame(callback: AnimationFrameCallback): number {
+  const requestAnimationFrame = (globalThis as any).requestAnimationFrame as
+    | ((cb: AnimationFrameCallback) => number)
+    | undefined;
+
+  if (typeof requestAnimationFrame === 'function') {
+    return requestAnimationFrame(callback);
+  }
+
+  return setTimeout(() => callback(Date.now()), 16) as unknown as number;
+}
+
+function cancelFrame(handle: number): void {
+  const cancelAnimationFrame = (globalThis as any).cancelAnimationFrame as
+    | ((value: number) => void)
+    | undefined;
+
+  if (typeof cancelAnimationFrame === 'function') {
+    cancelAnimationFrame(handle);
+    return;
+  }
+
+  clearTimeout(handle as unknown as ReturnType<typeof setTimeout>);
+}
+
+function defaultChannelState(trackId: string): MixerChannelState {
+  return {
+    trackId,
+    gain: 1,
+    pan: 0,
+    mute: false,
+    solo: false,
+    armed: false,
+    sendLevels: {},
+  };
 }

@@ -19,6 +19,7 @@ It reads:
 - arrangement duration
 - whether any track is muted or soloed
 - WubGuide progress for saved/exported state
+- live mixer meter state for clipping and headroom guidance
 
 ## Suggestions
 
@@ -31,6 +32,7 @@ Suggestions are deterministic and categorized as:
 - mix
 - workflow
 - export
+- clipping and headroom guidance
 
 Each suggestion has:
 
@@ -62,3 +64,4 @@ Producer Mode is UI guidance only:
 - No external AI model calls.
 - No Tone scheduling.
 - No playback side channels.
+- Meter-aware suggestions stay read-only and never create a new audio path.

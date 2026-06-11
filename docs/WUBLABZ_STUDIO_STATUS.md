@@ -49,6 +49,7 @@ Current Producer Mode reads:
 - Clip lengths and arrangement duration.
 - Mixer mute/solo usage.
 - Saved/exported progress.
+- Live meter state for clipping and headroom guidance.
 
 It does not analyze raw audio and does not call external AI APIs.
 
@@ -102,6 +103,8 @@ It does not analyze raw audio and does not call external AI APIs.
 `src/ui/mixer/MixerPanel.tsx` provides DAW-style channel strips:
 
 - Per-track channel strip.
+- LED-style per-channel meters.
+- Peak-hold and clipping indicators.
 - Track color indicator.
 - Mute and solo controls.
 - Pan strip.
@@ -134,10 +137,10 @@ It does not analyze raw audio and does not call external AI APIs.
 
 ## Testing Status
 
-Latest documented verification after the Beginner Mode/WubGuide pass:
+Latest documented verification after the Beginner Mode/WubGuide and metering pass:
 
-- 32 test files passing.
-- 144 tests passing.
+- 34 test files passing.
+- 155 tests passing.
 - Typecheck passing.
 - Lint passing.
 - Build passing.
@@ -159,7 +162,7 @@ Next work should continue in phases:
 - Responsive resizing and dockable panels.
 - Real audio clip editing refinements.
 - MIDI piano roll improvements.
-- Mixer metering.
+- Mixer metering refinement and better master gain staging.
 - Stem import/separation.
 - Offline WAV/stem rendering polish.
 - WubPad remote-control integration.

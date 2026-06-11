@@ -1,6 +1,11 @@
 import type { WubLabzProject } from '../../lib/project/projectSchema.js';
 import type { UserProgress } from './wubGuideProgress.js';
-import type { ProducerAnalysis, ProducerProjectSummary, ProducerSuggestion } from './producerModeTypes.js';
+import type {
+  ProducerAnalysis,
+  ProducerMeterContext,
+  ProducerProjectSummary,
+  ProducerSuggestion,
+} from './producerModeTypes.js';
 import { PRODUCER_MODE_EMPTY_PROJECT, PRODUCER_MODE_SUGGESTIONS } from './producerModeKnowledge.js';
 
 const PRIORITY_SCORE: Record<ProducerSuggestion['priority'], number> = {
@@ -35,6 +40,14 @@ export function summarizeProducerProject(
 }
 
 export function analyzeProducerProject(project: WubLabzProject, progress: UserProgress): ProducerAnalysis {
+  return analyzeProducerProjectWithMeters(project, progress);
+}
+
+export function analyzeProducerProjectWithMeters(
+  project: WubLabzProject,
+  progress: UserProgress,
+  meterContext?: ProducerMeterContext
+): ProducerAnalysis {
   const summary = summarizeProducerProject(project, progress);
   const suggestions: ProducerSuggestion[] = [];
   const clipCount = summary.audioClipCount + summary.midiClipCount;
@@ -51,6 +64,26 @@ export function analyzeProducerProject(project: WubLabzProject, progress: UserPr
   if (!summary.hasMutedOrSoloedTracks) suggestions.push(PRODUCER_MODE_SUGGESTIONS.muteSolo);
   if (!summary.savedProject) suggestions.push(PRODUCER_MODE_SUGGESTIONS.save);
   if (!summary.exportedAudio) suggestions.push(PRODUCER_MODE_SUGGESTIONS.export);
+  if (meterContext) {
+    const meterLevels = Object.values(meterContext.snapshot.levels);
+    const clippingChannels = meterLevels.filter((level) => level.channelId !== 'master' && level.clipping);
+    const activeChannels = meterLevels.filter((level) => level.channelId !== 'master' && (level.peak > 0.04 || level.rms > 0.02));
+    const masterLevel = meterContext.snapshot.levels.master;
+    const masterPeak = masterLevel?.peak ?? 0;
+    const anyAudibleSignal = activeChannels.length > 0 || masterPeak > 0.04;
+
+    if (clippingChannels.length > 0) {
+      suggestions.push(PRODUCER_MODE_SUGGESTIONS.clipping);
+    }
+
+    if (meterContext.isPlaying && !anyAudibleSignal) {
+      suggestions.push(PRODUCER_MODE_SUGGESTIONS.silentPlayback);
+    }
+
+    if (masterPeak >= 0.88 || (masterLevel?.rms ?? 0) >= 0.72) {
+      suggestions.push(PRODUCER_MODE_SUGGESTIONS.headroom);
+    }
+  }
 
   const sorted = suggestions.sort((a, b) => PRIORITY_SCORE[b.priority] - PRIORITY_SCORE[a.priority]);
 

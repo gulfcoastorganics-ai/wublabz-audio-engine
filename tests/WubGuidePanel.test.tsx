@@ -14,7 +14,7 @@ import {
 } from '../src/ui/assistant/wubGuideProgress.js';
 import { createWubGuideContext } from '../src/ui/assistant/wubGuideContextEngine.js';
 import { createEmptyProject } from '../src/lib/project/projectTimeline.js';
-import { analyzeProducerProject } from '../src/ui/assistant/producerModeEngine.js';
+import { analyzeProducerProject, analyzeProducerProjectWithMeters } from '../src/ui/assistant/producerModeEngine.js';
 import { useStudioStore } from '../src/state/useStudioStore.js';
 import type { WubLabzProject } from '../src/lib/project/projectSchema.js';
 
@@ -229,6 +229,78 @@ describe('WubGuidePanel', () => {
 
     expect(analyzeProducerProject(midiOnly, EMPTY_USER_PROGRESS).suggestions.map((s) => s.id)).toContain('layer-audio');
     expect(analyzeProducerProject(audioOnly, EMPTY_USER_PROGRESS).suggestions.map((s) => s.id)).toContain('add-midi');
+  });
+
+  it('includes meter-aware clipping guidance in Producer Mode', () => {
+    const project = createEmptyProject('clipping', 'Clipping Test');
+    const trackId = 'track-1';
+    const clippingProject: WubLabzProject = {
+      ...project,
+      tracks: [{
+        id: trackId,
+        name: 'Audio 1',
+        type: 'audio',
+        role: 'music',
+        order: 0,
+        gain: 1,
+        pan: 0,
+        mute: false,
+        solo: false,
+        arm: false,
+      }],
+      audioClips: [{
+        id: 'audio-1',
+        type: 'audio',
+        trackId,
+        name: 'Audio Clip',
+        startTime: 0,
+        endTime: 4,
+        clipGain: 1,
+        muted: false,
+        selected: false,
+        assetId: 'asset-1',
+        sourceOffsetSeconds: 0,
+      }],
+      mixerState: {
+        [trackId]: {
+          trackId,
+          gain: 1,
+          pan: 0,
+          mute: false,
+          solo: false,
+          armed: false,
+          sendLevels: {},
+        },
+      },
+    };
+
+    const analysis = analyzeProducerProjectWithMeters(
+      clippingProject,
+      EMPTY_USER_PROGRESS,
+      {
+        snapshot: {
+          timestamp: 0,
+          channelIds: [trackId, 'master'],
+          levels: {
+            [trackId]: { channelId: trackId, peak: 1, rms: 0.8, clipping: true, updatedAt: 0 },
+            master: { channelId: 'master', peak: 0.92, rms: 0.76, clipping: false, updatedAt: 0 },
+          },
+          peakHolds: {
+            [trackId]: 1,
+            master: 0.92,
+          },
+        },
+        isPlaying: true,
+      }
+    );
+
+    expect(analysis.suggestions.map((suggestion) => suggestion.id)).toContain('lower-clipping-channels');
+  });
+
+  it('answers meter and clipping questions', () => {
+    expect(answerWubGuidePrompt('What are meters?').title).toBe('What Are Meters?');
+    expect(answerWubGuidePrompt('Why is it red?').title).toBe('What Is Clipping?');
+    expect(answerWubGuidePrompt('How loud should it be?').highlightTarget).toBe('mixer');
   });
 
   it('clicking a Producer Mode suggestion highlights its target', async () => {

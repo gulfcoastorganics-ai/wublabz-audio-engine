@@ -31,6 +31,7 @@ WubGuide AI is local and deterministic for now:
 - Progress is persisted in local storage.
 - Responses can highlight UI targets such as transport, browser, arrangement, mixer, piano roll, save, export, snap, loop, tracks, and clips.
 - The tutorial walks through transport, browser, arrangement, mixer, piano roll, save, and export.
+- WubGuide also answers meter, clipping, and headroom questions.
 
 Future real AI integration should remain optional and must preserve the local-first guardrails.
 
@@ -38,7 +39,7 @@ Future real AI integration should remain optional and must preserve the local-fi
 
 WubGuide also includes Producer Mode for users who already understand the DAW interface. Producer Mode analyzes project structure, not raw audio, and gives deterministic production coaching.
 
-It summarizes BPM, time signature, tracks, audio clips, MIDI clips, arrangement length, mute/solo usage, saved state, and export state. Suggestions are categorized by arrangement, rhythm, melody, bass, mix, workflow, and export.
+It summarizes BPM, time signature, tracks, audio clips, MIDI clips, arrangement length, mute/solo usage, saved state, export state, and meter conditions. Suggestions are categorized by arrangement, rhythm, melody, bass, mix, workflow, and export.
 
 See [docs/PRODUCER_MODE.md](docs/PRODUCER_MODE.md).
 
@@ -96,7 +97,7 @@ As of the Beginner Mode/WubGuide pass:
 - Typecheck passing.
 - Lint passing.
 - Build passing.
-- Test suite passing: 32 files, 144 tests.
+- Test suite passing: 34 files, 155 tests.
 
 ## Roadmap
 
@@ -105,7 +106,7 @@ Recommended next phases:
 - Responsive resizing and dockable panels.
 - Real audio clip editing refinements.
 - MIDI piano roll improvements.
-- Mixer metering.
+- Mixer metering and clipping guidance.
 - Stem import/separation.
 - Offline WAV/stem rendering polish.
 - WubPad remote-control integration.
@@ -117,5 +118,6 @@ Recommended next phases:
 - [Architecture Guardrails](docs/ARCHITECTURE_GUARDRAILS.md)
 - [UI Design System](docs/UI_DESIGN_SYSTEM.md)
 - [Producer Mode](docs/PRODUCER_MODE.md)
+- [Mixer Metering](docs/METERING.md)
 - [Runtime Architecture](docs/WUBLABZ_RUNTIME_ARCHITECTURE.md)
 - [Playback Pipeline](docs/PLAYBACK_PIPELINE.md)

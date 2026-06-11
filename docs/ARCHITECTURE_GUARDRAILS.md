@@ -21,6 +21,7 @@ The concrete event type may be `TimelineEventV2[]` in current runtime modules, b
 - No side-channel playback from UI components, server handlers, macros, WubPad routes, preview helpers, or diagnostics.
 - No direct destination output that bypasses `BusGraph`.
 - No hidden playback timers that compete with `EventScheduler` and `ToneAdapter`.
+- Metering may observe existing bus output, but it must remain read-only and cannot create new playback paths.
 - No raw-audio upload to Gemini or any remote AI provider.
 - No API keys in source, logs, docs examples, or client-exposed state.
 
@@ -45,6 +46,10 @@ Timeline events are the deterministic playback contract. Higher-level producer, 
 ### BusGraph
 
 `BusGraph` owns the physical audio graph, named buses, effects chain, master output path, lifecycle reset/dispose behavior, and modulation parameter binding.
+
+### Metering
+
+The meter registry is a visual consumer of existing playback state. It may read bus levels or deterministic project/playhead state, but it must not route audio, schedule playback, or replace the canonical playback path.
 
 ## Disallowed Patterns
 

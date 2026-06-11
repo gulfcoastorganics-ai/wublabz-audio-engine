@@ -157,6 +157,32 @@ const KNOWLEDGE: KnowledgeEntry[] = [
     ],
   },
   {
+    id: 'meters',
+    title: 'What Are Meters?',
+    body: 'Meters show how loud a channel or the master output is. Green is healthy, yellow is close, and red means the signal is clipping.',
+    keywords: ['what are meters', 'meters', 'meter', 'levels'],
+    highlightTarget: 'mixer',
+    actions: [{ type: 'openMixer' }],
+    steps: [
+      'Look at the vertical bars beside each fader.',
+      'Watch the master meter to keep the full mix under control.',
+      'Use meters to balance tracks without guessing.',
+    ],
+  },
+  {
+    id: 'clipping',
+    title: 'What Is Clipping?',
+    body: 'Clipping happens when a signal is pushed too hard and turns red. Lower the gain, trim the channel, or give the master more headroom.',
+    keywords: ['why is it red', 'red', 'clipping', 'too loud', 'how loud should it be', 'headroom'],
+    highlightTarget: 'mixer',
+    actions: [{ type: 'openMixer' }],
+    steps: [
+      'Watch for the red clip indicator on the meter.',
+      'Lower the channel gain or the master if needed.',
+      'Aim for strong green and a little yellow, not constant red.',
+    ],
+  },
+  {
     id: 'midi-clip',
     title: 'Make a MIDI Clip',
     body: 'MIDI clips live on MIDI tracks. Double-click a MIDI lane or use the track MIDI button to create one.',

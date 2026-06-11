@@ -1005,3 +1005,102 @@ select {
   66%  { transform: scaleY(0.4); }
   100% { transform: scaleY(0.7); }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Mixer meters
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.mixer-meter-well {
+  position: relative;
+  width: 18px;
+  height: 116px;
+  border-radius: 12px;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.015)),
+    linear-gradient(180deg, rgba(8,11,24,0.98), rgba(4,6,14,0.98));
+  border: 1px solid rgba(255,255,255,0.06);
+  box-shadow: var(--shadow-glass), inset 0 0 0 1px rgba(255,255,255,0.02);
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+}
+
+.mixer-meter-glass {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.08), transparent 24%),
+    radial-gradient(circle at 50% 100%, rgba(139,127,248,0.18), transparent 56%);
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+.mixer-meter-segment-stack {
+  position: absolute;
+  inset: 8px 4px 18px;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+}
+
+.mixer-meter-segment {
+  flex: 1;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.05);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02);
+  opacity: 0.12;
+  transition: opacity 90ms linear, background-color 90ms linear, box-shadow 90ms linear;
+}
+
+.mixer-meter-segment[data-zone='green'][data-active='true'] {
+  opacity: 1;
+  background: linear-gradient(180deg, rgba(34,201,126,0.95), rgba(139,127,248,0.82));
+  box-shadow: 0 0 12px rgba(34,201,126,0.18), inset 0 0 0 1px rgba(255,255,255,0.09);
+}
+
+.mixer-meter-segment[data-zone='yellow'][data-active='true'] {
+  opacity: 1;
+  background: linear-gradient(180deg, rgba(245,166,35,0.98), rgba(255,214,102,0.82));
+  box-shadow: 0 0 12px rgba(245,166,35,0.2), inset 0 0 0 1px rgba(255,255,255,0.09);
+}
+
+.mixer-meter-segment[data-zone='red'][data-active='true'] {
+  opacity: 1;
+  background: linear-gradient(180deg, rgba(255,68,68,0.98), rgba(255,122,122,0.82));
+  box-shadow: 0 0 14px rgba(255,68,68,0.28), inset 0 0 0 1px rgba(255,255,255,0.1);
+}
+
+.mixer-meter-segment[data-rms='true'][data-active='false'] {
+  opacity: 0.32;
+}
+
+.mixer-meter-peak {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(238,238,255,0.9);
+  box-shadow: 0 0 10px rgba(238,238,255,0.42);
+  pointer-events: none;
+  transition: bottom 90ms linear, background-color 90ms linear, box-shadow 90ms linear;
+}
+
+.mixer-meter-well[data-clipping='true'] .mixer-meter-peak,
+.mixer-meter-well[data-clipping='true'] .mixer-meter-clip {
+  background: var(--color-danger);
+  box-shadow: 0 0 12px rgba(255,68,68,0.55);
+}
+
+.mixer-meter-clip {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255,68,68,0.85);
+  box-shadow: 0 0 10px rgba(255,68,68,0.65);
+  pointer-events: none;
+}

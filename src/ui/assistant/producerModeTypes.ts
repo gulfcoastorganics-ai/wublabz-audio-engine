@@ -1,4 +1,5 @@
 import type { WubGuideTarget } from './wubGuideTypes.js';
+import type { MeterSnapshot } from '../../audio/metering/meterTypes.js';
 
 export type ProducerSuggestionCategory =
   | 'arrangement'
@@ -36,4 +37,9 @@ export type ProducerAnalysis = {
   summary: ProducerProjectSummary;
   suggestions: ProducerSuggestion[];
   nextBestMove: ProducerSuggestion;
+};
+
+export type ProducerMeterContext = {
+  snapshot: MeterSnapshot;
+  isPlaying: boolean;
 };

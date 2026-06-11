@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
+import { useMeterLevels } from '../../audio/metering/useMeterLevels.js';
 import { useStudioStore } from '../../state/useStudioStore.js';
-import { analyzeProducerProject } from './producerModeEngine.js';
+import { analyzeProducerProjectWithMeters } from './producerModeEngine.js';
 import { useWubGuide } from './useWubGuide.js';
 import type { ProducerSuggestion } from './producerModeTypes.js';
 
@@ -18,10 +19,12 @@ function formatDuration(seconds: number): string {
 
 export function ProducerModePanel() {
   const project = useStudioStore((state) => state.project);
+  const isPlaying = useStudioStore((state) => state.isPlaying);
   const { userProgress, setActiveGuideTarget, setActionFeedback } = useWubGuide();
+  const meterSnapshot = useMeterLevels();
   const analysis = useMemo(
-    () => analyzeProducerProject(project, userProgress),
-    [project, userProgress]
+    () => analyzeProducerProjectWithMeters(project, userProgress, { snapshot: meterSnapshot, isPlaying }),
+    [project, userProgress, meterSnapshot, isPlaying]
   );
 
   function focusSuggestion(suggestion: ProducerSuggestion) {

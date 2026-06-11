@@ -193,6 +193,16 @@ Producer Mode UI includes:
 - Prioritized producer suggestion cards.
 - Click-to-highlight suggestions for relevant DAW areas.
 
+### Mixer Metering
+
+The mixer meter system should feel like a premium DAW LED ladder:
+
+- Vertical meter wells beside each fader.
+- Green, yellow, and red signal zones.
+- Peak-hold markers with smooth decay.
+- A clipping indicator that reads clearly without dominating the strip.
+- Master meter styling that stays visually separated from track channels.
+
 ## Accessibility and Interaction
 
 Interactive elements should provide:
