@@ -51,6 +51,7 @@ export type WubGuideTutorialStep = {
 export type BeginnerModeState = {
   beginnerModeEnabled: boolean;
   assistantOpen: boolean;
+  guideMode: 'beginner' | 'producer';
   activeGuideTarget: WubGuideTarget | null;
   guideFloatingLabel: string | null;
   tutorialActive: boolean;
@@ -66,7 +67,9 @@ export type BeginnerModeActions = {
   setBeginnerMode: (enabled: boolean) => void;
   openAssistant: () => void;
   closeAssistant: () => void;
+  setGuideMode: (mode: 'beginner' | 'producer') => void;
   setActiveGuideTarget: (target: WubGuideTarget | null, label?: string) => void;
+  setActionFeedback: (feedback: string | null) => void;
   askGuide: (prompt: string) => WubGuideResponse;
   markProgress: (patch: Partial<UserProgress>) => void;
   startTutorial: () => void;

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { WUB_GUIDE_QUICK_ACTIONS, WUB_GUIDE_TUTORIAL_STEPS } from './wubGuideKnowledge.js';
 import { useWubGuide } from './useWubGuide.js';
 import { WubGuideAvatar } from './WubGuideAvatar.js';
+import { ProducerModePanel } from './ProducerModePanel.js';
 import { useStudioStore } from '../../state/useStudioStore.js';
 import { createWubGuideContext } from './wubGuideContextEngine.js';
 import { WUB_GUIDE_MILESTONES } from './wubGuideProgress.js';
@@ -11,6 +12,7 @@ export function WubGuidePanel() {
   const {
     beginnerModeEnabled,
     assistantOpen,
+    guideMode,
     currentResponse,
     actionFeedback,
     userProgress,
@@ -25,6 +27,7 @@ export function WubGuidePanel() {
     skipTutorial,
     finishTutorial,
     closeAssistant,
+    setGuideMode,
   } = useWubGuide();
   const project = useStudioStore((state) => state.project);
   const [prompt, setPrompt] = useState('');
@@ -87,7 +90,7 @@ export function WubGuidePanel() {
         <WubGuideAvatar state={avatarState} />
         <div className="wubguide-panel-title">
           <span>WubGuide AI</span>
-          <small>Local beginner guide</small>
+          <small>{guideMode === 'producer' ? 'Producer coach' : 'Local beginner guide'}</small>
         </div>
         <button
           type="button"
@@ -99,6 +102,30 @@ export function WubGuidePanel() {
           x
         </button>
       </div>
+
+      <div className="wubguide-mode-switch" aria-label="WubGuide mode switch">
+        <button
+          type="button"
+          data-active={guideMode === 'beginner' ? 'true' : 'false'}
+          onClick={() => setGuideMode('beginner')}
+          aria-label="Switch to Beginner Mode"
+        >
+          Beginner
+        </button>
+        <button
+          type="button"
+          data-active={guideMode === 'producer' ? 'true' : 'false'}
+          onClick={() => setGuideMode('producer')}
+          aria-label="Switch to Producer Mode"
+        >
+          Producer
+        </button>
+      </div>
+
+      {guideMode === 'producer' ? (
+        <ProducerModePanel />
+      ) : (
+        <>
 
       <div className="wubguide-message-stack" aria-live="polite">
         {lastPrompt && (
@@ -198,6 +225,8 @@ export function WubGuidePanel() {
             </button>
           </div>
         </div>
+      )}
+        </>
       )}
     </aside>
   );

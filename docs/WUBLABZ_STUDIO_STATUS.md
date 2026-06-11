@@ -13,6 +13,7 @@ Current UI modules include:
 - Piano roll
 - App shell view switcher
 - Beginner Mode and WubGuide AI assistant
+- WubGuide Producer Mode
 
 The current visual pass added premium glassmorphism UI polish only. Runtime behavior, playback scheduling, Tone rendering, BusGraph routing, project persistence contracts, and export logic were intentionally left unchanged.
 
@@ -35,6 +36,21 @@ Current WubGuide behavior:
 - Animated original music-note mascot avatar.
 
 Future AI model integration can be added later, but it must remain optional and preserve the local-first architecture guardrails.
+
+## Producer Mode
+
+Producer Mode is the advanced WubGuide mode for users who already understand the DAW. It coaches musical decisions using deterministic project structure analysis.
+
+Current Producer Mode reads:
+
+- BPM and time signature.
+- Track count.
+- Audio and MIDI clip counts.
+- Clip lengths and arrangement duration.
+- Mixer mute/solo usage.
+- Saved/exported progress.
+
+It does not analyze raw audio and does not call external AI APIs.
 
 ## Current Modules
 

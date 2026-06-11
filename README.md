@@ -34,6 +34,14 @@ WubGuide AI is local and deterministic for now:
 
 Future real AI integration should remain optional and must preserve the local-first guardrails.
 
+## Producer Mode
+
+WubGuide also includes Producer Mode for users who already understand the DAW interface. Producer Mode analyzes project structure, not raw audio, and gives deterministic production coaching.
+
+It summarizes BPM, time signature, tracks, audio clips, MIDI clips, arrangement length, mute/solo usage, saved state, and export state. Suggestions are categorized by arrangement, rhythm, melody, bass, mix, workflow, and export.
+
+See [docs/PRODUCER_MODE.md](docs/PRODUCER_MODE.md).
+
 ## Architecture Guardrails
 
 Playback must remain on the canonical path:
@@ -108,5 +116,6 @@ Recommended next phases:
 - [WubLabz Studio Status](docs/WUBLABZ_STUDIO_STATUS.md)
 - [Architecture Guardrails](docs/ARCHITECTURE_GUARDRAILS.md)
 - [UI Design System](docs/UI_DESIGN_SYSTEM.md)
+- [Producer Mode](docs/PRODUCER_MODE.md)
 - [Runtime Architecture](docs/WUBLABZ_RUNTIME_ARCHITECTURE.md)
 - [Playback Pipeline](docs/PLAYBACK_PIPELINE.md)

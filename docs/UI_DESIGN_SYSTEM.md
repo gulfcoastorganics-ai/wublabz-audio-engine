@@ -181,6 +181,18 @@ WubGuide is local deterministic help for now:
 - Context-aware onboarding displays Beginner Journey milestones and a proactive next-step prompt.
 - Future real AI integration should keep the same UI affordances and remain optional.
 
+### Producer Mode
+
+Producer Mode uses the same glassmorphism shell and Wubby Note avatar, but the tone is more confident and coaching-oriented.
+
+Producer Mode UI includes:
+
+- Mode switch for Beginner and Producer.
+- Project summary card.
+- Next Best Move card.
+- Prioritized producer suggestion cards.
+- Click-to-highlight suggestions for relevant DAW areas.
+
 ## Accessibility and Interaction
 
 Interactive elements should provide:

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { WubGuidePanel } from '../src/ui/assistant/WubGuidePanel.js';
 import { answerWubGuidePrompt, WUB_GUIDE_WELCOME_RESPONSE } from '../src/ui/assistant/wubGuideKnowledge.js';
@@ -14,11 +14,15 @@ import {
 } from '../src/ui/assistant/wubGuideProgress.js';
 import { createWubGuideContext } from '../src/ui/assistant/wubGuideContextEngine.js';
 import { createEmptyProject } from '../src/lib/project/projectTimeline.js';
+import { analyzeProducerProject } from '../src/ui/assistant/producerModeEngine.js';
+import { useStudioStore } from '../src/state/useStudioStore.js';
+import type { WubLabzProject } from '../src/lib/project/projectSchema.js';
 
 function resetGuideStore() {
   useWubGuide.setState({
     beginnerModeEnabled: false,
     assistantOpen: false,
+    guideMode: 'beginner',
     activeGuideTarget: null,
     guideFloatingLabel: null,
     tutorialActive: false,
@@ -30,15 +34,27 @@ function resetGuideStore() {
   });
 }
 
+function resetStudioProject(project: WubLabzProject = createEmptyProject('wubguide-test', 'WubGuide Test')) {
+  useStudioStore.setState({
+    project,
+    showBrowser: true,
+    showMixer: true,
+    pianoRollClipId: null,
+    selectedClipId: null,
+  });
+}
+
 beforeEach(() => {
   localStorage.clear();
   resetGuideStore();
+  resetStudioProject();
 });
 
 afterEach(() => {
   cleanup();
   localStorage.clear();
   resetGuideStore();
+  resetStudioProject();
 });
 
 describe('WubGuidePanel', () => {
@@ -144,5 +160,87 @@ describe('WubGuidePanel', () => {
     expect(createWubGuideContext(withAudio, EMPTY_USER_PROGRESS).nextSuggestion.title).toBe(
       'Next: Create Track'
     );
+  });
+
+  it('renders Producer Mode after switching modes', async () => {
+    useWubGuide.getState().openAssistant();
+    render(<WubGuidePanel />);
+
+    const user = (userEvent as any).setup();
+    await user.click(screen.getByRole('button', { name: /Switch to Producer Mode/i }));
+
+    expect(screen.getByLabelText('Producer Mode')).toBeInTheDocument();
+    expect(screen.getByText('Project-aware coaching. No raw audio analysis yet.')).toBeInTheDocument();
+  });
+
+  it('shows project summary in Producer Mode', async () => {
+    useWubGuide.getState().openAssistant();
+    useWubGuide.getState().setGuideMode('producer');
+    render(<WubGuidePanel />);
+
+    expect(screen.getByLabelText('Project summary')).toBeInTheDocument();
+    expect(screen.getByText('BPM')).toBeInTheDocument();
+    expect(screen.getByText('Tracks')).toBeInTheDocument();
+    expect(screen.getByText('Audio')).toBeInTheDocument();
+    expect(screen.getByText('MIDI')).toBeInTheDocument();
+  });
+
+  it('produces deterministic suggestions for an empty project', () => {
+    const project = createEmptyProject('empty', 'Empty');
+    const analysis = analyzeProducerProject(project, EMPTY_USER_PROGRESS);
+
+    expect(analysis.suggestions.map((suggestion) => suggestion.id)).toContain('start-with-loop');
+    expect(analysis.suggestions.map((suggestion) => suggestion.id)).toContain('save-before-experimenting');
+  });
+
+  it('updates producer suggestions for MIDI and audio clip combinations', () => {
+    const base = createEmptyProject('clips', 'Clips');
+    const midiOnly: WubLabzProject = {
+      ...base,
+      midiClips: [{
+        id: 'midi-1',
+        type: 'midi',
+        trackId: 'track-1',
+        name: 'MIDI Clip',
+        startTime: 0,
+        endTime: 4,
+        clipGain: 1,
+        muted: false,
+        selected: false,
+        notes: [],
+      }],
+    };
+    const audioOnly: WubLabzProject = {
+      ...base,
+      audioClips: [{
+        id: 'audio-1',
+        type: 'audio',
+        trackId: 'track-1',
+        name: 'Audio Clip',
+        startTime: 0,
+        endTime: 4,
+        clipGain: 1,
+        muted: false,
+        selected: false,
+        assetId: 'asset-1',
+        sourceOffsetSeconds: 0,
+      }],
+    };
+
+    expect(analyzeProducerProject(midiOnly, EMPTY_USER_PROGRESS).suggestions.map((s) => s.id)).toContain('layer-audio');
+    expect(analyzeProducerProject(audioOnly, EMPTY_USER_PROGRESS).suggestions.map((s) => s.id)).toContain('add-midi');
+  });
+
+  it('clicking a Producer Mode suggestion highlights its target', async () => {
+    useWubGuide.getState().openAssistant();
+    useWubGuide.getState().setGuideMode('producer');
+    render(<WubGuidePanel />);
+
+    const user = (userEvent as any).setup();
+    const suggestionList = screen.getByLabelText('Producer suggestions');
+    await user.click(within(suggestionList).getByRole('button', { name: /Start With a Core Loop/i }));
+
+    expect(useWubGuide.getState().activeGuideTarget).toBe('arrangement');
+    expect(useWubGuide.getState().actionFeedback).toBe('I highlighted it for you.');
   });
 });

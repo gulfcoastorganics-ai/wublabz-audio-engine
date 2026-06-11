@@ -46,6 +46,7 @@ function progressPatchFromActions(actions: WubGuideAction[] | undefined): Partia
 export const useWubGuide = create<WubGuideStore>((set, get) => ({
   beginnerModeEnabled: false,
   assistantOpen: false,
+  guideMode: 'beginner',
   activeGuideTarget: null,
   guideFloatingLabel: null,
   tutorialActive: false,
@@ -88,8 +89,21 @@ export const useWubGuide = create<WubGuideStore>((set, get) => ({
     set({ assistantOpen: false });
   },
 
+  setGuideMode(mode) {
+    set({
+      guideMode: mode,
+      assistantOpen: true,
+      beginnerModeEnabled: mode === 'beginner' ? true : get().beginnerModeEnabled,
+      actionFeedback: null,
+    });
+  },
+
   setActiveGuideTarget(target: WubGuideTarget | null, label?: string) {
     set({ activeGuideTarget: target, guideFloatingLabel: target ? label ?? null : null });
+  },
+
+  setActionFeedback(feedback) {
+    set({ actionFeedback: feedback });
   },
 
   askGuide(prompt) {
