@@ -12,8 +12,26 @@ Current UI modules include:
 - Mixer
 - Piano roll
 - App shell view switcher
+- Beginner Mode and WubGuide AI assistant
 
 The current visual pass added premium glassmorphism UI polish only. Runtime behavior, playback scheduling, Tone rendering, BusGraph routing, project persistence contracts, and export logic were intentionally left unchanged.
+
+## Beginner Mode and WubGuide AI
+
+Beginner Mode is a guided UX/help layer for learning the studio. It is not a playback feature and does not alter engine behavior.
+
+Current WubGuide behavior:
+
+- Local deterministic assistant only.
+- No external AI API yet.
+- No raw audio upload.
+- Keyword/rule-based responses for common beginner questions.
+- Visual highlight system using `data-wubguide-target` UI targets.
+- Guided tutorial with Next, Back, Skip, and Finish.
+- Quick prompts for tutorial, import help, playback help, mixer help, piano roll help, export help, and a first beat checklist.
+- Animated original music-note mascot avatar.
+
+Future AI model integration can be added later, but it must remain optional and preserve the local-first architecture guardrails.
 
 ## Current Modules
 
@@ -84,12 +102,23 @@ The current visual pass added premium glassmorphism UI polish only. Runtime beha
 - MIDI note drawing, moving, resizing, selection, and deletion.
 - Velocity lane editing.
 
+### WubGuidePanel
+
+`src/ui/assistant/WubGuidePanel.tsx` provides the beginner assistant:
+
+- Local deterministic question answering.
+- Quick prompt chips.
+- Tutorial state controls.
+- Chat-like guide responses.
+- Visual target highlighting through `useWubGuide`.
+- WubGuide avatar states for idle, speaking, thinking, celebrating, and pointing.
+
 ## Testing Status
 
-Latest documented verification after the UI polish pass:
+Latest documented verification after the Beginner Mode/WubGuide pass:
 
-- 31 test files passing.
-- 136 tests passing.
+- 32 test files passing.
+- 141 tests passing.
 - Typecheck passing.
 - Lint passing.
 - Build passing.

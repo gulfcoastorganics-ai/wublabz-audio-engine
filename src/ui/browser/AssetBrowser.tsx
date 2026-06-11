@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { useStudioStore } from '../../state/useStudioStore.js';
 import type { AudioAsset } from '../../lib/project/projectSchema.js';
+import { useWubGuide } from '../assistant/useWubGuide.js';
 
 type BrowserTab = 'samples' | 'projects';
 
@@ -10,10 +11,13 @@ const S = {
   panel: {
     display: 'flex',
     flexDirection: 'column' as const,
-    width: 196,
+    width: 208,
     flexShrink: 0,
-    background: 'rgba(6,8,22,0.97)',
-    borderRight: '1px solid rgba(255,255,255,0.04)',
+    background: 'linear-gradient(180deg, rgba(11,15,32,0.92), rgba(5,7,18,0.92))',
+    border: '1px solid var(--color-border-soft)',
+    borderRadius: 16,
+    boxShadow: 'var(--shadow-glass)',
+    overflow: 'hidden',
     height: '100%',
   },
   titleBar: {
@@ -22,19 +26,20 @@ const S = {
     padding: '0 10px',
     height: 30,
     flexShrink: 0,
-    background: 'rgba(4,6,16,0.98)',
-    borderBottom: '1px solid rgba(255,255,255,0.045)',
+    background: 'linear-gradient(180deg, rgba(15,19,40,0.92), rgba(7,10,22,0.94))',
+    borderBottom: '1px solid rgba(139,127,248,0.12)',
   },
   title: {
     fontSize: 11,
     fontWeight: 600,
-    color: '#c0b8ff',
-    letterSpacing: '0.02em',
+    color: 'var(--color-text-bright)',
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase' as const,
   },
   tabBar: {
     display: 'flex',
     flexShrink: 0,
-    borderBottom: '1px solid rgba(255,255,255,0.04)',
+    borderBottom: '1px solid rgba(255,255,255,0.045)',
   },
   searchWrap: {
     padding: '6px 8px 4px',
@@ -42,31 +47,31 @@ const S = {
   },
   searchInput: {
     width: '100%',
-    height: 24,
+    height: 26,
     padding: '0 8px',
-    background: 'rgba(0,0,0,0.45)',
-    border: '1px solid rgba(255,255,255,0.06)',
-    borderRadius: 4,
-    color: '#ced0ea',
+    background: 'linear-gradient(180deg, rgba(0,0,0,0.45), rgba(8,12,26,0.48))',
+    border: '1px solid rgba(255,255,255,0.075)',
+    borderRadius: 8,
+    color: 'var(--color-text-main)',
     fontSize: 11,
     outline: 'none',
     boxSizing: 'border-box' as const,
   },
   dropZone: (importing: boolean) => ({
     margin: '0 8px 6px',
-    height: 34,
+    height: 38,
     flexShrink: 0 as const,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 5,
+    borderRadius: 10,
     border: importing
-      ? '1px solid rgba(139,127,248,0.5)'
-      : '1px dashed rgba(255,255,255,0.1)',
+      ? '1px solid rgba(139,127,248,0.58)'
+      : '1px dashed rgba(255,255,255,0.13)',
     background: importing
-      ? 'rgba(139,127,248,0.08)'
-      : 'rgba(255,255,255,0.015)',
-    color: importing ? '#c0b8ff' : 'rgba(255,255,255,0.25)',
+      ? 'linear-gradient(135deg, rgba(139,127,248,0.16), rgba(91,156,248,0.08))'
+      : 'rgba(255,255,255,0.022)',
+    color: importing ? 'var(--color-text-bright)' : 'rgba(206,208,234,0.44)',
     fontSize: 10,
     cursor: 'pointer',
     transition: 'background 0.12s, border-color 0.12s, color 0.12s',
@@ -78,7 +83,7 @@ const S = {
   empty: {
     padding: '20px 12px',
     textAlign: 'center' as const,
-    color: 'rgba(255,255,255,0.2)',
+    color: 'rgba(206,208,234,0.38)',
     fontSize: 11,
     lineHeight: 1.6,
   },
@@ -88,6 +93,7 @@ const S = {
 
 export function AssetBrowser() {
   const { project, importFile, setStatus } = useStudioStore();
+  const { beginnerModeEnabled, askGuide } = useWubGuide();
   const [tab, setTab] = useState<BrowserTab>('samples');
   const [search, setSearch] = useState('');
   const [importing, setImporting] = useState(false);
@@ -124,10 +130,21 @@ export function AssetBrowser() {
   }
 
   return (
-    <div style={S.panel}>
+    <div style={S.panel} data-wubguide-target="browser" aria-label="Asset browser panel">
       {/* Title */}
       <div style={S.titleBar}>
         <span style={S.title}>Browser</span>
+        {beginnerModeEnabled && (
+          <button
+            type="button"
+            className="wubguide-section-help"
+            onClick={() => askGuide('How do I import audio?')}
+            aria-label="Get help with importing audio"
+            title="Ask WubGuide about importing audio"
+          >
+            ?
+          </button>
+        )}
       </div>
 
       {/* Tabs */}
@@ -149,9 +166,9 @@ export function AssetBrowser() {
                 background: 'transparent',
                 border: 'none',
                 borderBottom: active
-                  ? '2px solid rgba(139,127,248,0.7)'
+                  ? '2px solid rgba(139,127,248,0.78)'
                   : '2px solid transparent',
-                color: active ? '#c0b8ff' : 'rgba(255,255,255,0.25)',
+                color: active ? 'var(--color-text-bright)' : 'rgba(206,208,234,0.38)',
                 transition: 'color 0.1s, border-color 0.1s',
               }}
             >
@@ -165,10 +182,12 @@ export function AssetBrowser() {
       <div style={S.searchWrap}>
         <input
           type="text"
-          placeholder="Search…"
+        placeholder="Search…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           style={S.searchInput}
+          aria-label="Search imported samples"
+          title={beginnerModeEnabled ? 'Search audio already imported into this project' : 'Search samples'}
         />
       </div>
 
@@ -178,6 +197,8 @@ export function AssetBrowser() {
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
+        aria-label="Drop or click to import audio"
+        title={beginnerModeEnabled ? 'Drop local audio here or click to choose an audio file' : 'Import audio'}
       >
         {importing ? '⏳ Importing…' : '+ Drop or click to import'}
         <input
@@ -237,19 +258,24 @@ function AssetItem({
       onMouseLeave={() => setHovered(false)}
       title={`${asset.name}\n${formatDuration(asset.durationSeconds)} · ${asset.sampleRate}Hz`}
       style={{
-        padding: '5px 8px 5px 8px',
+        margin: '0 6px 4px',
+        padding: '7px 8px',
         cursor: 'grab',
-        borderBottom: '1px solid rgba(255,255,255,0.03)',
-        background: hovered ? 'rgba(139,127,248,0.06)' : 'transparent',
-        transition: 'background 0.1s',
+        border: '1px solid rgba(255,255,255,0.04)',
+        borderRadius: 10,
+        background: hovered
+          ? 'linear-gradient(135deg, rgba(139,127,248,0.12), rgba(91,156,248,0.055))'
+          : 'rgba(255,255,255,0.018)',
+        transition: 'background 0.1s, border-color 0.1s, box-shadow 0.1s',
+        boxShadow: hovered ? '0 0 16px rgba(139,127,248,0.12)' : 'none',
       }}
     >
       {/* Name row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-        <span style={{ color: '#4a7ff0', fontSize: 11, flexShrink: 0 }}>♪</span>
+        <span style={{ color: 'var(--color-accent-2)', fontSize: 11, flexShrink: 0 }}>♪</span>
         <span style={{
           flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          fontSize: 11, fontWeight: 500, color: '#d4d6f0',
+          fontSize: 11, fontWeight: 600, color: 'var(--color-text-bright)',
         }}>
           {asset.name}
         </span>
@@ -257,17 +283,17 @@ function AssetItem({
 
       {/* Meta row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 16, marginTop: 2 }}>
-        <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)', fontFamily: 'monospace' }}>
+        <span style={{ fontSize: 9, color: 'rgba(206,208,234,0.42)', fontFamily: 'monospace' }}>
           {formatDuration(asset.durationSeconds)}
         </span>
         {asset.channels === 2 && (
           <span style={{
             fontSize: 8, fontWeight: 600,
-            color: 'rgba(139,127,248,0.55)',
+            color: 'rgba(139,127,248,0.78)',
             letterSpacing: '0.06em',
           }}>ST</span>
         )}
-        <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.15)', fontFamily: 'monospace' }}>
+        <span style={{ fontSize: 9, color: 'rgba(206,208,234,0.28)', fontFamily: 'monospace' }}>
           {Math.round(asset.sampleRate / 1000)}k
         </span>
       </div>
@@ -284,7 +310,7 @@ function AssetItem({
           {asset.waveformPeaks.map((p, i) => (
             <line key={i}
               x1={i} y1={5 - p * 4.5} x2={i} y2={5 + p * 4.5}
-              stroke="#4a7ff0" strokeWidth="1"
+              stroke="#5b9cf8" strokeWidth="1"
             />
           ))}
         </svg>
@@ -313,10 +339,10 @@ function ProjectsList() {
         onClick={() => void handleLoad()}
         style={{
           width: '100%', height: 30,
-          background: 'rgba(139,127,248,0.15)',
-          border: '1px solid rgba(139,127,248,0.3)',
-          borderRadius: 5,
-          color: '#c0b8ff',
+          background: 'linear-gradient(135deg, rgba(139,127,248,0.2), rgba(91,156,248,0.1))',
+          border: '1px solid rgba(139,127,248,0.36)',
+          borderRadius: 9,
+          color: 'var(--color-text-bright)',
           fontSize: 11, fontWeight: 500,
           cursor: 'pointer',
           transition: 'background 0.1s',
@@ -325,7 +351,7 @@ function ProjectsList() {
         Load Project…
       </button>
       <div style={{
-        fontSize: 10, textAlign: 'center', color: 'rgba(255,255,255,0.18)', lineHeight: 1.6,
+        fontSize: 10, textAlign: 'center', color: 'rgba(206,208,234,0.34)', lineHeight: 1.6,
       }}>
         Projects auto-save<br />to IndexedDB
       </div>

@@ -6,13 +6,12 @@ import React, {
 } from 'react';
 import { useStudioStore } from '../../state/useStudioStore.js';
 import type { AudioClip, AudioAsset, MidiClip, Track } from '../../lib/project/projectSchema.js';
+import { useWubGuide } from '../assistant/useWubGuide.js';
 
 const TRACK_HEADER_WIDTH = 176;
 const TRACK_HEIGHT = 58;
-const RULER_HEIGHT = 26;
+const RULER_HEIGHT = 28;
 const MIN_CLIP_WIDTH = 4;
-
-// ─── Drag state ───────────────────────────────────────────────────────────────
 
 interface DragState {
   active: boolean;
@@ -29,13 +28,9 @@ interface DragState {
   containerTop: number;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 function beatsToSeconds(beats: number, bpm: number): number {
   return (beats * 60) / bpm;
 }
-
-// ─── Component ────────────────────────────────────────────────────────────────
 
 export function ArrangementView() {
   const {
@@ -59,22 +54,14 @@ export function ArrangementView() {
     addMidiClip,
     importFile,
   } = useStudioStore();
+  const { beginnerModeEnabled, askGuide } = useWubGuide();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const laneAreaRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState>({
-    active: false,
-    type: 'move',
-    clipId: '',
-    clipType: 'audio',
-    startClientX: 0,
-    startClientY: 0,
-    originalStart: 0,
-    originalEnd: 0,
-    originalTrackId: '',
-    trackIndex: 0,
-    containerLeft: 0,
-    containerTop: 0,
+    active: false, type: 'move', clipId: '', clipType: 'audio',
+    startClientX: 0, startClientY: 0, originalStart: 0, originalEnd: 0,
+    originalTrackId: '', trackIndex: 0, containerLeft: 0, containerTop: 0,
   });
   const dragOverlayRef = useRef<HTMLDivElement | null>(null);
   const [, setDragTick] = useState(0);
@@ -97,8 +84,6 @@ export function ArrangementView() {
     return Math.round(t / snapGrid) * snapGrid;
   }
 
-  // ─── Ruler ticks ─────────────────────────────────────────────────────────
-
   const bpb = project.timeSignature.beatsPerBar;
   const bpm = project.bpm;
   const barDurationSec = beatsToSeconds(bpb, bpm);
@@ -110,7 +95,6 @@ export function ArrangementView() {
     const visibleEnd = visibleStart + (containerRef.current?.clientWidth ?? 1200) / pxPerSec;
     const startBar = Math.max(0, Math.floor(visibleStart / barDurationSec) - 1);
     const endBar = Math.ceil(visibleEnd / barDurationSec) + 2;
-
     for (let b = startBar; b <= endBar; b++) {
       const t = b * barDurationSec;
       const x = secToPx(t) - scrollLeft;
@@ -119,8 +103,7 @@ export function ArrangementView() {
         for (let beat = 1; beat < bpb; beat++) {
           rulerTicks.push({
             x: secToPx(t + beatsToSeconds(beat, bpm)) - scrollLeft,
-            label: '',
-            isBar: false,
+            label: '', isBar: false,
           });
         }
       }
@@ -129,14 +112,10 @@ export function ArrangementView() {
 
   const playheadX = secToPx(position) - scrollLeft;
 
-  // ─── Scroll ───────────────────────────────────────────────────────────────
-
   const handleScroll = useCallback(
     (e: React.UIEvent<HTMLDivElement>) => setScrollLeft(e.currentTarget.scrollLeft),
     [setScrollLeft]
   );
-
-  // ─── Zoom (Ctrl+Wheel) ────────────────────────────────────────────────────
 
   const handleWheel = useCallback(
     (e: WheelEvent) => {
@@ -155,8 +134,6 @@ export function ArrangementView() {
     return () => el.removeEventListener('wheel', handleWheel);
   }, [handleWheel]);
 
-  // ─── Drag: pointer down ───────────────────────────────────────────────────
-
   function startClipDrag(
     e: React.PointerEvent<HTMLDivElement>,
     clip: AudioClip | MidiClip,
@@ -167,18 +144,11 @@ export function ArrangementView() {
     e.currentTarget.setPointerCapture(e.pointerId);
     const container = laneAreaRef.current!.getBoundingClientRect();
     dragRef.current = {
-      active: true,
-      type,
-      clipId: clip.id,
-      clipType: clip.type,
-      startClientX: e.clientX,
-      startClientY: e.clientY,
-      originalStart: clip.startTime,
-      originalEnd: clip.endTime,
-      originalTrackId: clip.trackId,
-      trackIndex,
-      containerLeft: container.left,
-      containerTop: container.top,
+      active: true, type, clipId: clip.id,
+      clipType: clip.type, startClientX: e.clientX, startClientY: e.clientY,
+      originalStart: clip.startTime, originalEnd: clip.endTime,
+      originalTrackId: clip.trackId, trackIndex,
+      containerLeft: container.left, containerTop: container.top,
     };
     document.body.classList.add('drag-active');
     selectClip(clip.id);
@@ -226,15 +196,11 @@ export function ArrangementView() {
     [pxToSec, snap, tracks, moveClip, resizeClip]
   );
 
-  // ─── Ruler click: seek ────────────────────────────────────────────────────
-
   function handleRulerClick(e: React.MouseEvent<HTMLDivElement>) {
     const rect = e.currentTarget.getBoundingClientRect();
     const px = e.clientX - rect.left + scrollLeft;
     useStudioStore.getState().seek(pxToSec(px));
   }
-
-  // ─── Drop audio ───────────────────────────────────────────────────────────
 
   function handleDrop(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault();
@@ -242,8 +208,6 @@ export function ArrangementView() {
       if (file.type.startsWith('audio/')) void importFile(file);
     }
   }
-
-  // ─── Keyboard shortcuts ───────────────────────────────────────────────────
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -266,11 +230,8 @@ export function ArrangementView() {
     return () => window.removeEventListener('keydown', handleKey);
   }, [deleteClip, duplicateClip]);
 
-  // ─── Context menu ─────────────────────────────────────────────────────────
-
   const [ctxMenu, setCtxMenu] = useState<{
-    x: number; y: number;
-    clipId: string; clipType: 'audio' | 'midi';
+    x: number; y: number; clipId: string; clipType: 'audio' | 'midi';
   } | null>(null);
 
   useEffect(() => {
@@ -285,38 +246,48 @@ export function ArrangementView() {
   return (
     <div
       ref={containerRef}
-      className="flex flex-col flex-1 overflow-hidden"
-      style={{ background: '#04060e' }}
+      className="flex flex-col flex-1 overflow-hidden panel-float relative"
       onDragOver={(e) => e.preventDefault()}
       onDrop={handleDrop}
+      data-wubguide-target="arrangement"
+      aria-label="Arrangement view"
     >
+      {beginnerModeEnabled && (
+        <button
+          type="button"
+          className="wubguide-panel-help wubguide-panel-help-arrangement"
+          onClick={() => askGuide('What is the arrangement view?')}
+          aria-label="Get help with the arrangement view"
+          title="Ask WubGuide about the arrangement"
+        >
+          ? Arrangement
+        </button>
+      )}
       <div className="flex flex-1 overflow-hidden">
         {/* ── Track header column ──────────────────────────────────────── */}
         <div
           className="flex flex-col shrink-0 overflow-y-auto"
           style={{
             width: TRACK_HEADER_WIDTH,
-            background: 'rgba(6, 8, 20, 0.95)',
-            borderRight: '1px solid rgba(255,255,255,0.05)',
+            background: 'linear-gradient(180deg, rgba(10,14,30,0.96), rgba(5,7,18,0.95))',
+            borderRight: '1px solid var(--color-border-soft)',
           }}
         >
           {/* Ruler spacer */}
-          <div
-            className="shrink-0 flex items-center px-3"
-            style={{
-              height: RULER_HEIGHT,
-              borderBottom: '1px solid rgba(255,255,255,0.04)',
-              background: 'rgba(3,5,16,0.98)',
-            }}
-          >
-            <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.1em', color: 'rgba(255,255,255,0.18)', textTransform: 'uppercase' }}>
-              Bars
-            </span>
+          <div className="shrink-0 flex items-center px-3" style={{
+            height: RULER_HEIGHT,
+            borderBottom: '1px solid rgba(139,127,248,0.14)',
+            background: 'linear-gradient(180deg, rgba(8,11,24,0.98), rgba(4,6,14,0.98))',
+          }}>
+            <span style={{
+              fontSize: 10, fontWeight: 600, letterSpacing: '0.1em',
+              color: 'rgba(206,208,234,0.42)', textTransform: 'uppercase',
+            }}>Bars</span>
           </div>
 
           {/* Track headers */}
           {tracks.map((track, idx) => (
-            <TrackHeader
+          <TrackHeader
               key={track.id}
               track={track}
               index={idx}
@@ -327,41 +298,18 @@ export function ArrangementView() {
             />
           ))}
 
-          {/* Empty state */}
           {tracks.length === 0 && (
-            <div style={{ padding: '16px 12px', color: 'rgba(255,255,255,0.18)', fontSize: 11, lineHeight: 1.6, textAlign: 'center' }}>
+            <div style={{
+              padding: '18px 12px', color: 'rgba(206,208,234,0.38)',
+              fontSize: 12, lineHeight: 1.6, textAlign: 'center',
+            }}>
               No tracks yet.<br />Add one below.
             </div>
           )}
 
-          {/* Add track buttons */}
           <div style={{ display: 'flex', gap: 4, padding: '8px 8px 10px' }}>
-            <button
-              onClick={() => addTrack('audio')}
-              style={{
-                flex: 1, height: 24,
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.07)',
-                borderRadius: 4, color: 'rgba(255,255,255,0.35)',
-                fontSize: 10, fontWeight: 500, cursor: 'pointer',
-                transition: 'background 0.12s, color 0.12s',
-              }}
-            >
-              + Audio
-            </button>
-            <button
-              onClick={() => addTrack('midi')}
-              style={{
-                flex: 1, height: 24,
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.07)',
-                borderRadius: 4, color: 'rgba(255,255,255,0.35)',
-                fontSize: 10, fontWeight: 500, cursor: 'pointer',
-                transition: 'background 0.12s, color 0.12s',
-              }}
-            >
-              + MIDI
-            </button>
+            <AddTrackBtn label="+ Audio" onClick={() => addTrack('audio')} />
+            <AddTrackBtn label="+ MIDI"  onClick={() => addTrack('midi')} />
           </div>
         </div>
 
@@ -379,57 +327,43 @@ export function ArrangementView() {
               className="sticky top-0 z-20 cursor-pointer"
               style={{
                 height: RULER_HEIGHT,
-                background: 'linear-gradient(180deg, rgba(3,5,16,0.99) 0%, rgba(5,7,20,0.97) 100%)',
-                borderBottom: '1px solid rgba(139,127,248,0.12)',
+                background: 'linear-gradient(180deg, rgba(9,13,28,0.99) 0%, rgba(5,8,19,0.97) 100%)',
+                borderBottom: '1px solid rgba(139,127,248,0.2)',
+                boxShadow: '0 6px 18px rgba(0,0,0,0.28)',
               }}
               onClick={handleRulerClick}
             >
               {rulerTicks.map((tick, i) => (
-                <div
-                  key={i}
-                  className="absolute top-0 bottom-0 flex flex-col justify-start"
-                  style={{ left: tick.x }}
-                >
-                  <div
-                    style={{
-                      width: 1,
-                      height: tick.isBar ? 14 : 6,
-                      background: tick.isBar
-                        ? 'rgba(139,127,248,0.4)'
-                        : 'rgba(255,255,255,0.1)',
-                      marginTop: tick.isBar ? 0 : 8,
-                    }}
-                  />
+                <div key={i} className="absolute top-0 bottom-0 flex flex-col justify-start"
+                  style={{ left: tick.x }}>
+                  <div style={{
+                    width: 1,
+                    height: tick.isBar ? 16 : 7,
+                    background: tick.isBar ? 'rgba(139,127,248,0.58)' : 'rgba(206,208,234,0.14)',
+                    marginTop: tick.isBar ? 0 : 9,
+                  }} />
                   {tick.isBar && tick.label && (
-                    <span
-                      style={{
-                        fontSize: 9,
-                        fontWeight: 600,
-                        color: 'rgba(180,172,255,0.55)',
-                        paddingLeft: 4,
-                        marginTop: 1,
-                        userSelect: 'none',
-                        letterSpacing: '0.04em',
-                      }}
-                    >
+                    <span style={{
+                      fontSize: 11, fontWeight: 700,
+                      color: 'rgba(206,208,255,0.72)',
+                      paddingLeft: 4, marginTop: 1,
+                      userSelect: 'none', letterSpacing: '0.03em',
+                    }}>
                       {tick.label}
                     </span>
                   )}
                 </div>
               ))}
 
-              {/* Loop region tint */}
               {loopState.loopEnabled && (
-                <div
-                  className="absolute top-0 bottom-0"
-                  style={{
-                    left: secToPx(loopState.loopStart) - scrollLeft,
-                    width: secToPx(loopState.loopEnd - loopState.loopStart),
-                    background: 'rgba(139,127,248,0.15)',
-                    borderLeft: '1px solid rgba(139,127,248,0.5)',
-                    borderRight: '1px solid rgba(139,127,248,0.5)',
-                  }}
-                />
+                <div className="absolute top-0 bottom-0" style={{
+                  left: secToPx(loopState.loopStart) - scrollLeft,
+                  width: secToPx(loopState.loopEnd - loopState.loopStart),
+                  background: 'linear-gradient(90deg, rgba(139,127,248,0.18), rgba(91,156,248,0.12))',
+                  borderLeft: '1px solid rgba(139,127,248,0.58)',
+                  borderRight: '1px solid rgba(139,127,248,0.58)',
+                  boxShadow: 'inset 0 0 18px rgba(139,127,248,0.08)',
+                }} />
               )}
             </div>
 
@@ -440,11 +374,13 @@ export function ArrangementView() {
               return (
                 <div
                   key={track.id}
-                  className="relative"
+                  className="relative track-lane"
                   style={{
                     height: TRACK_HEIGHT,
                     borderBottom: '1px solid rgba(255,255,255,0.035)',
-                    background: isAlt ? 'rgba(8,10,22,0.9)' : 'rgba(5,7,16,0.95)',
+                    background: isAlt
+                      ? 'linear-gradient(180deg, rgba(11,14,30,0.84), rgba(8,10,22,0.9))'
+                      : 'linear-gradient(180deg, rgba(8,11,24,0.92), rgba(6,8,18,0.95))',
                   }}
                   onDoubleClick={(e) => {
                     if ((e.target as HTMLElement).classList.contains('lane-bg')) {
@@ -458,22 +394,16 @@ export function ArrangementView() {
                     }
                   }}
                 >
-                  {/* Bar grid lines */}
                   <div className="absolute inset-0 pointer-events-none lane-bg">
                     {rulerTicks.filter((t) => t.isBar).map((tick, i) => (
-                      <div
-                        key={i}
-                        className="absolute top-0 bottom-0"
-                        style={{
-                          left: tick.x,
-                          width: 1,
-                          background: 'rgba(139,127,248,0.06)',
-                        }}
-                      />
+                      <div key={i} style={{
+                        position: 'absolute', top: 0, bottom: 0,
+                        left: tick.x, width: 1,
+                        background: 'linear-gradient(180deg, rgba(139,127,248,0.12), rgba(91,156,248,0.045))',
+                      }} />
                     ))}
                   </div>
 
-                  {/* Clips */}
                   {trackClips.map((clip) => {
                     const left = secToPx(clip.startTime) - scrollLeft;
                     const width = Math.max(MIN_CLIP_WIDTH, secToPx(clip.endTime - clip.startTime));
@@ -508,32 +438,29 @@ export function ArrangementView() {
               );
             })}
 
-            {/* Empty arrangement hint */}
+            {/* Empty hint */}
             {tracks.length === 0 && (
               <div style={{
                 position: 'absolute', inset: 0,
-                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                gap: 8, pointerEvents: 'none',
-                color: 'rgba(255,255,255,0.1)', fontSize: 13,
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                gap: 10, pointerEvents: 'none',
               }}>
-                <span style={{ fontSize: 28, opacity: 0.3 }}>◈</span>
-                <span>Add a track to get started</span>
-                <span style={{ fontSize: 11, opacity: 0.6 }}>Drop audio files anywhere</span>
+                <span style={{ fontSize: 36, opacity: 0.18, color: 'var(--color-accent)' }}>◈</span>
+                <span style={{ color: 'rgba(238,238,255,0.58)', fontSize: 13, fontWeight: 600 }}>Add a track to start arranging</span>
+                <span style={{ color: 'rgba(206,208,234,0.32)', fontSize: 11 }}>Drop audio files anywhere or create MIDI from a lane</span>
               </div>
             )}
           </div>
 
-          {/* Playhead */}
+          {/* Playhead — gradient with glow */}
           {playheadX >= 0 && (
-            <div
-              className="absolute top-0 bottom-0 z-30 pointer-events-none"
-              style={{
-                left: playheadX,
-                width: 2,
-                background: '#ff4444',
-                boxShadow: '0 0 8px 2px rgba(255,68,68,0.5), 0 0 2px rgba(255,68,68,0.8)',
-              }}
-            />
+            <div className="absolute top-0 bottom-0 z-30 pointer-events-none" style={{
+              left: playheadX,
+              width: 2,
+              background: 'linear-gradient(to bottom, #ff8b8b, #ff3f6f)',
+              boxShadow: '0 0 20px rgba(255,70,110,0.72), 0 0 6px rgba(255,255,255,0.5)',
+            }} />
           )}
         </div>
       </div>
@@ -557,106 +484,100 @@ export function ArrangementView() {
         />
       )}
 
-      {/* Hint bar */}
-      <div
-        style={{
-          padding: '4px 12px',
-          background: 'rgba(4,6,14,0.96)',
-          borderTop: '1px solid rgba(255,255,255,0.04)',
-          color: 'rgba(255,255,255,0.18)',
-          fontSize: 10,
-          letterSpacing: '0.02em',
-          userSelect: 'none',
-          flexShrink: 0,
-        }}
-      >
+      <div style={{
+        padding: '3px 12px',
+        background: 'linear-gradient(180deg, rgba(8,11,24,0.94), rgba(4,6,14,0.96))',
+        borderTop: '1px solid rgba(255,255,255,0.045)',
+        color: 'rgba(206,208,234,0.32)',
+        fontSize: 10, letterSpacing: '0.02em',
+        userSelect: 'none', flexShrink: 0,
+      }}>
         Drop audio · Ctrl+Scroll zoom · Click ruler to seek · Del to remove · Double-click MIDI lane to create clip
       </div>
     </div>
   );
 }
 
+// ─── AddTrackBtn ──────────────────────────────────────────────────────────────
+
+function AddTrackBtn({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button onClick={onClick} style={{
+      flex: 1, height: 24,
+      background: 'linear-gradient(180deg, rgba(255,255,255,0.055), rgba(255,255,255,0.02))',
+      border: '1px solid var(--color-border-soft)',
+      borderRadius: 7, color: 'rgba(206,208,234,0.62)',
+      fontSize: 10, fontWeight: 500, cursor: 'pointer',
+      transition: 'background 0.12s, color 0.12s',
+    }}>
+      {label}
+    </button>
+  );
+}
+
 // ─── TrackHeader ──────────────────────────────────────────────────────────────
 
-function TrackHeader({ track, index, onAddMidi }: {
+function TrackHeader({ track, onAddMidi }: {
   track: Track; index: number; onAddMidi: () => void;
 }) {
   const { updateTrack } = useStudioStore();
-
+  const { beginnerModeEnabled, askGuide } = useWubGuide();
   return (
-    <div
-      className="flex items-center gap-1.5 px-2 shrink-0"
-      style={{
-        height: TRACK_HEIGHT,
-        borderBottom: '1px solid rgba(255,255,255,0.035)',
-        background: 'rgba(6,8,20,0.92)',
-        transition: 'background 0.1s',
-      }}
-    >
-      {/* Color accent bar */}
-      <div
-        style={{
-          width: 3,
-          alignSelf: 'stretch',
-          margin: '8px 0',
-          borderRadius: 2,
-          background: track.color ?? 'var(--color-accent)',
-          boxShadow: `0 0 6px ${track.color ?? 'rgba(139,127,248,0.5)'}`,
-          flexShrink: 0,
-        }}
-      />
+    <div className="flex items-center gap-1.5 px-2 shrink-0" style={{
+      height: TRACK_HEIGHT,
+      borderBottom: '1px solid rgba(255,255,255,0.03)',
+      background: 'linear-gradient(180deg, rgba(13,16,34,0.86), rgba(7,9,22,0.92))',
+    }} data-wubguide-target="track-header">
+      <div style={{
+        width: 3, alignSelf: 'stretch', margin: '8px 0', borderRadius: 2, flexShrink: 0,
+        background: track.color ?? '#8B5CF6',
+        boxShadow: `0 0 10px ${track.color ?? 'rgba(139,127,248,0.6)'}`,
+      }} />
 
-      {/* Name + type */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
-          fontSize: 11, fontWeight: 600, color: '#d4d6f0',
+          fontSize: 12, fontWeight: 650, color: 'var(--color-text-bright)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>
           {track.name}
         </div>
-        <div style={{ fontSize: 9, fontWeight: 500, letterSpacing: '0.07em', color: 'rgba(255,255,255,0.22)', marginTop: 1 }}>
+        <div style={{
+          fontSize: 10, fontWeight: 500, letterSpacing: '0.07em',
+          color: 'rgba(206,208,234,0.34)', marginTop: 1,
+        }}>
           {track.type.toUpperCase()}
         </div>
       </div>
 
-      {/* Controls */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-end' }}>
         <div style={{ display: 'flex', gap: 2 }}>
-          <TrackBtn
-            label="M"
-            active={track.mute}
-            activeColor="rgba(245,166,35,0.9)"
-            activeBg="rgba(245,166,35,0.18)"
-            title="Mute"
-            onClick={() => updateTrack(track.id, { mute: !track.mute })}
-          />
-          <TrackBtn
-            label="S"
-            active={track.solo}
-            activeColor="rgba(32,201,126,0.9)"
-            activeBg="rgba(32,201,126,0.15)"
-            title="Solo"
-            onClick={() => updateTrack(track.id, { solo: !track.solo })}
-          />
+          <TrackBtn label="M" active={track.mute}
+            activeColor="rgba(245,166,35,0.9)" activeBg="rgba(245,166,35,0.18)"
+            title="Mute" onClick={() => updateTrack(track.id, { mute: !track.mute })} />
+          <TrackBtn label="S" active={track.solo}
+            activeColor="rgba(34,201,126,0.9)" activeBg="rgba(34,201,126,0.15)"
+            title="Solo" onClick={() => updateTrack(track.id, { solo: !track.solo })} />
         </div>
         {track.type === 'midi' && (
-          <button
-            onClick={onAddMidi}
-            title="Add MIDI clip"
-            style={{
-              height: 14,
-              padding: '0 5px',
-              background: 'rgba(22, 110, 76, 0.45)',
-              border: '1px solid rgba(32,201,126,0.3)',
-              borderRadius: 3,
-              color: 'rgba(32,201,126,0.9)',
-              fontSize: 9,
-              fontWeight: 600,
-              cursor: 'pointer',
-              letterSpacing: '0.04em',
-            }}
-          >
+          <button onClick={onAddMidi} title="Add MIDI clip" style={{
+            height: 14, padding: '0 5px',
+            background: 'rgba(22,110,76,0.45)',
+            border: '1px solid rgba(34,201,126,0.3)',
+            borderRadius: 3, color: 'rgba(34,201,126,0.9)',
+            fontSize: 9, fontWeight: 600, cursor: 'pointer', letterSpacing: '0.04em',
+          }}>
             +MIDI
+          </button>
+        )}
+        {beginnerModeEnabled && (
+          <button
+            type="button"
+            className="wubguide-mini-help"
+            onClick={() => askGuide(track.type === 'midi' ? 'How do I make a MIDI clip?' : 'How do I mute a track?')}
+            aria-label={`Get help with ${track.name}`}
+            title="Ask WubGuide about this track"
+          >
+            ?
           </button>
         )}
       </div>
@@ -665,27 +586,18 @@ function TrackHeader({ track, index, onAddMidi }: {
 }
 
 function TrackBtn({ label, active, activeColor, activeBg, title, onClick }: {
-  label: string; active: boolean;
-  activeColor: string; activeBg: string;
-  title: string; onClick: () => void;
+  label: string; active: boolean; activeColor: string; activeBg: string; title: string; onClick: () => void;
 }) {
   return (
-    <button
-      onClick={onClick}
-      title={title}
-      style={{
-        width: 18, height: 18,
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        borderRadius: 3,
-        fontSize: 9, fontWeight: 700,
-        cursor: 'pointer',
-        transition: 'background 0.1s, color 0.1s, box-shadow 0.1s',
-        border: active ? `1px solid ${activeColor}` : '1px solid rgba(255,255,255,0.08)',
-        background: active ? activeBg : 'rgba(255,255,255,0.04)',
-        color: active ? activeColor : 'rgba(255,255,255,0.25)',
-        boxShadow: active ? `0 0 6px ${activeColor}` : 'none',
-      }}
-    >
+    <button onClick={onClick} title={title} style={{
+      width: 18, height: 18, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      borderRadius: 3, fontSize: 9, fontWeight: 700, cursor: 'pointer',
+      transition: 'background 0.1s, color 0.1s, box-shadow 0.1s',
+      border: active ? `1px solid ${activeColor}` : '1px solid rgba(255,255,255,0.08)',
+      background: active ? activeBg : 'rgba(255,255,255,0.04)',
+      color: active ? activeColor : 'rgba(255,255,255,0.25)',
+      boxShadow: active ? `0 0 6px ${activeColor}` : 'none',
+    }}>
       {label}
     </button>
   );
@@ -714,26 +626,23 @@ function ClipBlock({
     [dragOverlayRef]
   );
 
-  const base = track.color ?? (clip.type === 'audio' ? '#2852b8' : '#166e4c');
-  // Convert hex to rgba for gradient
-  const headerBg = base;
+  const base = track.color ?? (clip.type === 'audio' ? '#3b5bdb' : '#166e4c');
 
   return (
     <div
       ref={refCb}
       className="absolute overflow-hidden flex flex-col"
+      data-wubguide-target="clip"
+      aria-label={`${clip.type} clip ${clip.name}`}
       style={{
         top: 4, bottom: 4, left, width,
-        borderRadius: 5,
-        border: isSelected
-          ? '1px solid rgba(255,255,255,0.5)'
-          : '1px solid rgba(255,255,255,0.1)',
-        cursor: 'grab',
-        zIndex: isDragging ? 50 : 1,
-        background: `linear-gradient(160deg, ${base}cc 0%, ${base}99 100%)`,
+        borderRadius: 9,
+        border: isSelected ? '1px solid rgba(238,238,255,0.72)' : '1px solid rgba(255,255,255,0.13)',
+        cursor: 'grab', zIndex: isDragging ? 50 : 1,
+        background: `linear-gradient(160deg, ${base}f0 0%, ${base}ad 58%, rgba(7,10,22,0.48) 100%)`,
         boxShadow: isSelected
-          ? `0 0 0 1px rgba(255,255,255,0.25), 0 0 12px rgba(139,127,248,0.25)`
-          : '0 1px 4px rgba(0,0,0,0.4)',
+          ? '0 0 0 1px rgba(139,127,248,0.42), 0 0 22px rgba(139,127,248,0.28), 0 8px 20px rgba(0,0,0,0.32)'
+          : '0 3px 10px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.12)',
         transition: isDragging ? 'none' : 'box-shadow 0.12s',
         willChange: isDragging ? 'transform' : undefined,
       }}
@@ -742,17 +651,17 @@ function ClipBlock({
       onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick(); }}
       onContextMenu={onContextMenu}
     >
-      {/* Header stripe */}
-      <div
-        style={{
-          height: 15, flexShrink: 0,
-          background: `${headerBg}`,
-          display: 'flex', alignItems: 'center',
-          padding: '0 5px',
-          borderBottom: '1px solid rgba(255,255,255,0.08)',
-        }}
-      >
-        <span style={{ fontSize: 9, fontWeight: 600, color: 'rgba(255,255,255,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <div style={{
+        height: 16, flexShrink: 0,
+        background: `linear-gradient(90deg, ${base}, rgba(255,255,255,0.08))`,
+        display: 'flex', alignItems: 'center',
+        padding: '0 7px',
+        borderBottom: '1px solid rgba(255,255,255,0.13)',
+      }}>
+        <span style={{
+          fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.94)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
           {clip.name}
         </span>
         {clip.muted && (
@@ -760,7 +669,6 @@ function ClipBlock({
         )}
       </div>
 
-      {/* Content area */}
       <div style={{ flex: 1, overflow: 'hidden', padding: '1px 2px' }}>
         {clip.type === 'audio' && asset && (
           <WaveformMiniature peaks={asset.waveformPeaks} />
@@ -770,7 +678,6 @@ function ClipBlock({
         )}
       </div>
 
-      {/* Resize grip */}
       <div
         style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: 8, cursor: 'ew-resize', zIndex: 2 }}
         onPointerDown={(e) => { e.stopPropagation(); onResizeStart(e); }}
@@ -778,8 +685,8 @@ function ClipBlock({
         <div style={{
           position: 'absolute', top: '50%', right: 2,
           transform: 'translateY(-50%)',
-          width: 2, height: 12, borderRadius: 1,
-          background: 'rgba(255,255,255,0.25)',
+          width: 2, height: 14, borderRadius: 1,
+          background: 'rgba(255,255,255,0.5)',
         }} />
       </div>
     </div>
@@ -789,10 +696,13 @@ function ClipBlock({
 function WaveformMiniature({ peaks }: { peaks: number[] }) {
   if (!peaks.length) return null;
   return (
-    <svg width="100%" height="100%" viewBox={`0 0 ${peaks.length} 32`} preserveAspectRatio="none" style={{ display: 'block' }}>
+    <svg width="100%" height="100%"
+      viewBox={`0 0 ${peaks.length} 32`}
+      preserveAspectRatio="none"
+      style={{ display: 'block' }}>
       {peaks.map((p, i) => (
         <line key={i} x1={i} y1={16 - p * 13} x2={i} y2={16 + p * 13}
-          stroke="rgba(255,255,255,0.5)" strokeWidth="1" />
+          stroke="rgba(238,238,255,0.68)" strokeWidth="1" />
       ))}
     </svg>
   );
@@ -801,9 +711,10 @@ function WaveformMiniature({ peaks }: { peaks: number[] }) {
 function MidiMiniature({ notes, duration }: { notes: MidiClip['notes']; duration: number }) {
   if (!notes.length) {
     return (
-      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.3)', fontSize: 9 }}>
-        empty
-      </div>
+      <div style={{
+        height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: 'rgba(238,238,255,0.45)', fontSize: 10,
+      }}>empty</div>
     );
   }
   const minNote = Math.min(...notes.map((n) => n.note));
@@ -817,8 +728,7 @@ function MidiMiniature({ notes, duration }: { notes: MidiClip['notes']; duration
           x={`${(n.startBeat / totalBeats) * 100}%`}
           y={`${((maxNote - n.note) / noteRange) * 78 + 11}%`}
           width={`${Math.max(1.5, (n.durationBeats / totalBeats) * 100)}%`}
-          height="9%"
-          fill="rgba(255,255,255,0.75)" rx="0.5"
+          height="9%" fill="rgba(238,238,255,0.82)" rx="1"
         />
       ))}
     </svg>
@@ -827,24 +737,22 @@ function MidiMiniature({ notes, duration }: { notes: MidiClip['notes']; duration
 
 // ─── Context menu ─────────────────────────────────────────────────────────────
 
-function ClipContextMenu({ x, y, clipId, clipType, onClose, onDelete, onDuplicate, onSplit, onOpenPianoRoll }: {
+function ClipContextMenu({ x, y, clipType, onClose, onDelete, onDuplicate, onSplit, onOpenPianoRoll }: {
   x: number; y: number; clipId: string; clipType: 'audio' | 'midi';
   onClose: () => void; onDelete: () => void; onDuplicate: () => void;
   onSplit: () => void; onOpenPianoRoll?: () => void;
 }) {
   return (
-    <div
-      style={{
-        position: 'fixed', left: x, top: y,
-        background: 'rgba(10,13,28,0.96)',
-        border: '1px solid rgba(255,255,255,0.1)',
-        borderRadius: 8,
-        boxShadow: '0 8px 32px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)',
-        minWidth: 148,
-        padding: '4px 0',
-        zIndex: 50,
-      }}
-    >
+    <div style={{
+      position: 'fixed', left: x, top: y,
+      background: 'linear-gradient(180deg, rgba(17,20,39,0.96), rgba(8,10,24,0.96))',
+      backdropFilter: 'blur(16px)',
+      WebkitBackdropFilter: 'blur(16px)',
+      border: '1px solid rgba(255,255,255,0.1)',
+      borderRadius: 10,
+      boxShadow: '0 12px 38px rgba(0,0,0,0.78), 0 0 0 1px rgba(255,255,255,0.04), 0 0 24px rgba(139,127,248,0.12)',
+      minWidth: 152, padding: '4px 0', zIndex: 50,
+    }}>
       {onOpenPianoRoll && <CtxItem label="Open Piano Roll" onClick={onOpenPianoRoll} icon="⊞" />}
       <CtxItem label="Duplicate  Ctrl+D" onClick={onDuplicate} icon="⧉" />
       {clipType === 'audio' && <CtxItem label="Split at Playhead" onClick={onSplit} icon="⊘" />}
@@ -862,12 +770,10 @@ function CtxItem({ label, onClick, danger, icon }: {
       style={{
         display: 'flex', width: '100%', textAlign: 'left',
         padding: '6px 12px', gap: 8,
-        background: 'transparent',
-        border: 'none', cursor: 'pointer',
+        background: 'transparent', border: 'none', cursor: 'pointer',
         color: danger ? '#ff7777' : 'rgba(210,213,240,0.85)',
-        fontSize: 11, fontWeight: 400,
-        transition: 'background 0.08s, color 0.08s',
-        alignItems: 'center',
+        fontSize: 12, fontWeight: 400, alignItems: 'center',
+        transition: 'background 0.08s',
       }}
       onClick={onClick}
     >

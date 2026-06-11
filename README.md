@@ -13,8 +13,23 @@ WubLabz Studio currently provides the core browser DAW surface:
 - Arrangement view with tracks, clips, timeline ruler, grid, loop region, context menu, and playhead.
 - Mixer panel with channel strips, mute/solo, pan, faders, and master control.
 - Piano roll for MIDI note editing, note drawing, selection, erase mode, grid size, velocity, and velocity lane.
+- Beginner Mode with WubGuide AI, a local deterministic assistant that teaches the interface and highlights relevant controls.
 
 The most recent UI pass added premium glassmorphism visual polish only. It did not change audio engine behavior, scheduling, project persistence contracts, export logic, or runtime playback routing.
+
+## Beginner Mode and WubGuide AI
+
+Beginner Mode is a guided UX/help layer for new users. It adds contextual labels, section help buttons, guided highlights, and the WubGuide AI assistant panel.
+
+WubGuide AI is local and deterministic for now:
+
+- No external AI API is connected.
+- No audio is uploaded.
+- Questions are answered with keyword/rule-based matching.
+- Responses can highlight UI targets such as transport, browser, arrangement, mixer, piano roll, save, export, snap, loop, tracks, and clips.
+- The tutorial walks through transport, browser, arrangement, mixer, piano roll, save, and export.
+
+Future real AI integration should remain optional and must preserve the local-first guardrails.
 
 ## Architecture Guardrails
 
@@ -65,12 +80,12 @@ npm run dev
 
 ## Current Verification Status
 
-As of the UI polish documentation pass:
+As of the Beginner Mode/WubGuide pass:
 
 - Typecheck passing.
 - Lint passing.
 - Build passing.
-- Test suite passing: 31 files, 136 tests.
+- Test suite passing: 32 files, 141 tests.
 
 ## Roadmap
 

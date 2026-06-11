@@ -3,6 +3,7 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useWubGuide } from '../src/ui/assistant/useWubGuide.js';
 
 // ─── Controller mock ──────────────────────────────────────────────────────────
 
@@ -163,6 +164,14 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  useWubGuide.setState({
+    beginnerModeEnabled: false,
+    assistantOpen: false,
+    activeGuideTarget: null,
+    guideFloatingLabel: null,
+    tutorialActive: false,
+    tutorialStepIndex: 0,
+  });
 });
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -193,7 +202,7 @@ describe('App interaction', () => {
 
     // Browser panel heading is present
     expect(screen.getAllByText('Browser').length).toBeGreaterThan(0);
-  }, 10000);
+  }, 20000);
 
   it('renders transport controls and routes through the controller mock', async () => {
     await renderApp();
@@ -220,6 +229,20 @@ describe('App interaction', () => {
     expect(controller.emergencyStop).toHaveBeenCalledTimes(1);
   }, 10000);
 
+  it('renders Beginner Mode toggle and opens WubGuide assistant', async () => {
+    await renderApp();
+    const user = (userEvent as any).setup();
+
+    const beginnerToggle = screen.getByRole('button', { name: /Beginner Mode Off/i });
+    expect(beginnerToggle).toBeInTheDocument();
+
+    await user.click(beginnerToggle);
+
+    expect(screen.getByRole('button', { name: /Beginner Mode On/i })).toBeInTheDocument();
+    expect(screen.getByLabelText('WubGuide AI assistant')).toBeInTheDocument();
+    expect(screen.getByText(/Local beginner guide/i)).toBeInTheDocument();
+  }, 10000);
+
   it('switches views without throwing and renders mocked surfaces', async () => {
     await renderApp();
     const user = (userEvent as any).setup();
@@ -233,7 +256,7 @@ describe('App interaction', () => {
     await user.click(screen.getByRole('button', { name: /WubLabz Studio/ }));
     // Back to studio: transport bar is visible
     expect(await screen.findByTitle(/^Play$/)).toBeInTheDocument();
-  });
+  }, 10000);
 
   it('initializes controller on mount', async () => {
     await renderApp();

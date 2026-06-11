@@ -6,6 +6,8 @@ WubLabz Studio uses a dark premium DAW interface with glass panels, rounded cont
 
 The current UI polish pass was visual only. It did not alter audio engine behavior, playback scheduling, persistence contracts, or export logic.
 
+Beginner Mode builds on the same visual system with guide labels, neon target highlights, and a glass WubGuide AI assistant panel. It is a UI/help layer only.
+
 ## Token Source
 
 Global design tokens live in `src/index.css`.
@@ -159,6 +161,23 @@ Piano roll styling should emphasize edit precision:
 - Clear selected note state.
 - Velocity lane contrast.
 - Compact tool controls.
+
+### Beginner Mode and WubGuide AI
+
+Beginner Mode should be visually helpful without cluttering advanced mode:
+
+- Beginner labels and `?` buttons only render when Beginner Mode is enabled.
+- Highlighted targets use a purple/blue glow on existing UI regions.
+- Floating labels should be compact and should not reflow the DAW layout.
+- WubGuide AI uses a glass card with chat-like messages, quick action chips, and tutorial footer controls.
+- The avatar is an original animated music-note mascot with expressive eyes, a small mouth animation, and purple/blue glow.
+
+WubGuide is local deterministic help for now:
+
+- No external AI API.
+- No remote model calls.
+- Rule-based prompt matching from local knowledge.
+- Future real AI integration should keep the same UI affordances and remain optional.
 
 ## Accessibility and Interaction
 

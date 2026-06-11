@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useStudioStore } from '../../state/useStudioStore.js';
 import type { MidiClip, MidiNote } from '../../lib/project/projectSchema.js';
+import { useWubGuide } from '../assistant/useWubGuide.js';
 
 const KEY_WIDTH = 38;
 const NOTE_HEIGHT = 14;
@@ -37,12 +38,14 @@ const S = {
   container: {
     display: 'flex',
     flexDirection: 'column' as const,
-    background: 'rgba(4,6,14,0.98)',
-    borderTop: '2px solid rgba(139,127,248,0.6)',
-    height: '40vh',
+    background: 'linear-gradient(180deg, rgba(10,14,30,0.96), rgba(4,6,14,0.98))',
+    borderTop: '1px solid rgba(139,127,248,0.55)',
+    borderRadius: 16,
+    overflow: 'hidden',
+    height: '36vh',
     minHeight: 200,
-    maxHeight: 480,
-    boxShadow: '0 -4px 24px rgba(0,0,0,0.5)',
+    maxHeight: 420,
+    boxShadow: 'var(--shadow-glass), 0 -4px 24px rgba(139,127,248,0.08)',
   },
   toolbar: {
     display: 'flex',
@@ -51,32 +54,32 @@ const S = {
     padding: '0 10px',
     height: 38,
     flexShrink: 0,
-    background: 'rgba(6,8,22,0.97)',
-    borderBottom: '1px solid rgba(255,255,255,0.055)',
-    boxShadow: '0 1px 8px rgba(0,0,0,0.4)',
+    background: 'linear-gradient(180deg, rgba(15,19,40,0.94), rgba(7,10,22,0.96))',
+    borderBottom: '1px solid rgba(139,127,248,0.12)',
+    boxShadow: '0 1px 10px rgba(0,0,0,0.45)',
   },
   title: {
     fontSize: 11,
     fontWeight: 600,
-    color: '#c0b8ff',
-    letterSpacing: '0.02em',
+    color: 'var(--color-text-bright)',
+    letterSpacing: '0.04em',
     marginRight: 4,
     flexShrink: 0,
   },
   divider: {
     width: 1,
     height: 18,
-    background: 'rgba(255,255,255,0.07)',
+    background: 'rgba(255,255,255,0.075)',
     margin: '0 3px',
     flexShrink: 0,
   },
   select: {
     height: 22,
     padding: '0 18px 0 7px',
-    background: 'rgba(0,0,0,0.5)',
-    border: '1px solid rgba(255,255,255,0.07)',
-    borderRadius: 4,
-    color: '#ced0ea',
+    background: 'linear-gradient(180deg, rgba(0,0,0,0.52), rgba(8,12,26,0.58))',
+    border: '1px solid rgba(255,255,255,0.075)',
+    borderRadius: 7,
+    color: 'var(--color-text-main)',
     fontSize: 11,
     outline: 'none',
   },
@@ -84,25 +87,25 @@ const S = {
     width: 38,
     height: 22,
     textAlign: 'center' as const,
-    background: 'rgba(0,0,0,0.5)',
-    border: '1px solid rgba(255,255,255,0.07)',
-    borderRadius: 4,
-    color: '#ced0ea',
+    background: 'linear-gradient(180deg, rgba(0,0,0,0.52), rgba(8,12,26,0.58))',
+    border: '1px solid rgba(255,255,255,0.075)',
+    borderRadius: 7,
+    color: 'var(--color-text-main)',
     fontSize: 11,
     outline: 'none',
   },
   labelText: {
     fontSize: 10,
-    color: 'rgba(255,255,255,0.3)',
+    color: 'rgba(206,208,234,0.42)',
     flexShrink: 0,
   },
   closeBtn: {
     height: 22,
     padding: '0 8px',
-    background: 'rgba(255,255,255,0.06)',
+    background: 'linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.022))',
     border: '1px solid rgba(255,255,255,0.08)',
-    borderRadius: 4,
-    color: 'rgba(255,255,255,0.35)',
+    borderRadius: 7,
+    color: 'rgba(206,208,234,0.58)',
     fontSize: 10,
     cursor: 'pointer',
     flexShrink: 0,
@@ -113,8 +116,8 @@ const S = {
     flexShrink: 0,
     overflowY: 'auto' as const,
     overflowX: 'hidden' as const,
-    background: '#0e0f18',
-    borderRight: '1px solid rgba(255,255,255,0.06)',
+    background: 'linear-gradient(180deg, #101426, #080b17)',
+    borderRight: '1px solid rgba(255,255,255,0.065)',
   },
   gridArea: {
     flex: 1,
@@ -125,7 +128,7 @@ const S = {
     flexShrink: 0,
     overflowX: 'auto' as const,
     borderTop: '1px solid rgba(255,255,255,0.06)',
-    background: 'rgba(4,5,14,0.97)',
+    background: 'linear-gradient(180deg, rgba(5,8,18,0.97), rgba(3,5,12,0.98))',
     paddingLeft: KEY_WIDTH,
   },
   emptyState: {
@@ -133,8 +136,8 @@ const S = {
     alignItems: 'center',
     justifyContent: 'center',
     height: 192,
-    background: 'rgba(4,6,14,0.98)',
-    color: 'rgba(255,255,255,0.18)',
+    background: 'linear-gradient(180deg, rgba(8,11,24,0.96), rgba(4,6,14,0.98))',
+    color: 'rgba(206,208,234,0.4)',
     fontSize: 12,
     flexDirection: 'column' as const,
     gap: 6,
@@ -160,10 +163,10 @@ function ToolBtn({
         fontWeight: active ? 600 : 400,
         cursor: 'pointer',
         transition: 'background 0.1s, color 0.1s, box-shadow 0.1s',
-        border: active ? '1px solid rgba(139,127,248,0.5)' : '1px solid rgba(255,255,255,0.07)',
-        background: active ? 'rgba(139,127,248,0.2)' : 'rgba(255,255,255,0.04)',
-        color: active ? '#c0b8ff' : 'rgba(255,255,255,0.3)',
-        boxShadow: active ? '0 0 8px rgba(139,127,248,0.2)' : 'none',
+        border: active ? '1px solid rgba(139,127,248,0.52)' : '1px solid rgba(255,255,255,0.075)',
+        background: active ? 'linear-gradient(135deg, rgba(139,127,248,0.24), rgba(91,156,248,0.1))' : 'rgba(255,255,255,0.035)',
+        color: active ? 'var(--color-text-bright)' : 'rgba(206,208,234,0.42)',
+        boxShadow: active ? '0 0 12px rgba(139,127,248,0.22)' : 'none',
       }}
     >
       {label}
@@ -175,6 +178,7 @@ function ToolBtn({
 
 export function PianoRoll({ onClose }: { onClose: () => void }) {
   const { project, pianoRollClipId, addMidiNote, updateMidiNote, deleteMidiNote } = useStudioStore();
+  const { beginnerModeEnabled, askGuide } = useWubGuide();
   const clip = project.midiClips.find((c) => c.id === pianoRollClipId) as MidiClip | undefined;
 
   const [pxPerBeat, setPxPerBeat] = useState(40);
@@ -319,10 +323,21 @@ export function PianoRoll({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div style={S.container}>
+    <div style={S.container} data-wubguide-target="piano-roll" aria-label="Piano roll editor">
       {/* Toolbar */}
       <div style={S.toolbar}>
         <span style={S.title}>Piano Roll — {clip.name}</span>
+        {beginnerModeEnabled && (
+          <button
+            type="button"
+            className="wubguide-section-help"
+            onClick={() => askGuide('How do I open the piano roll?')}
+            aria-label="Get help with the piano roll"
+            title="Ask WubGuide about the piano roll"
+          >
+            ?
+          </button>
+        )}
 
         <ToolBtn label="✏ Pencil" active={tool === 'pencil'} onClick={() => setTool('pencil')} title="Draw notes (P)" />
         <ToolBtn label="↖ Select" active={tool === 'select'} onClick={() => setTool('select')} title="Select notes (S)" />
@@ -379,8 +394,10 @@ export function PianoRoll({ onClose }: { onClose: () => void }) {
                     alignItems: 'center',
                     justifyContent: 'flex-end',
                     paddingRight: 4,
-                    background: black ? '#141420' : '#d8d9e8',
-                    borderBottom: `1px solid ${black ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.15)'}`,
+                    background: black
+                      ? 'linear-gradient(180deg, #171a2a, #0e111f)'
+                      : 'linear-gradient(180deg, #eceefe, #bfc4dd)',
+                    borderBottom: `1px solid ${black ? 'rgba(255,255,255,0.065)' : 'rgba(0,0,0,0.18)'}`,
                     position: 'relative',
                     boxShadow: isC && !black ? 'inset 0 -1px 0 rgba(139,127,248,0.25)' : undefined,
                   }}
@@ -390,7 +407,7 @@ export function PianoRoll({ onClose }: { onClose: () => void }) {
                     <span style={{
                       fontSize: 8,
                       fontWeight: 700,
-                      color: black ? 'rgba(180,172,255,0.4)' : 'rgba(60,60,100,0.6)',
+                      color: black ? 'rgba(206,208,255,0.46)' : 'rgba(38,42,78,0.68)',
                       letterSpacing: '0.03em',
                     }}>
                       {noteName(midi)}
@@ -426,8 +443,8 @@ export function PianoRoll({ onClose }: { onClose: () => void }) {
                     position: 'absolute', left: 0, right: 0,
                     top: i * NOTE_HEIGHT,
                     height: NOTE_HEIGHT,
-                    background: black ? 'rgba(0,0,0,0.2)' : 'transparent',
-                    borderBottom: `1px solid ${isC ? 'rgba(139,127,248,0.12)' : 'rgba(255,255,255,0.03)'}`,
+                    background: black ? 'rgba(0,0,0,0.22)' : 'rgba(255,255,255,0.006)',
+                    borderBottom: `1px solid ${isC ? 'rgba(139,127,248,0.15)' : 'rgba(255,255,255,0.032)'}`,
                     pointerEvents: 'none',
                   }}
                 />
@@ -442,8 +459,8 @@ export function PianoRoll({ onClose }: { onClose: () => void }) {
                   position: 'absolute', top: 0, bottom: 0,
                   left: line.x, width: 1,
                   background: line.isMajor
-                    ? 'rgba(139,127,248,0.2)'
-                    : 'rgba(255,255,255,0.04)',
+                    ? 'rgba(139,127,248,0.24)'
+                    : 'rgba(255,255,255,0.045)',
                   pointerEvents: 'none',
                 }}
               />
@@ -456,7 +473,7 @@ export function PianoRoll({ onClose }: { onClose: () => void }) {
                 style={{
                   position: 'absolute', top: 2, left: line.x + 3,
                   fontSize: 8, fontWeight: 600,
-                  color: 'rgba(139,127,248,0.35)',
+                  color: 'rgba(139,127,248,0.48)',
                   pointerEvents: 'none',
                   userSelect: 'none',
                 }}
@@ -482,13 +499,13 @@ export function PianoRoll({ onClose }: { onClose: () => void }) {
                     borderRadius: 3,
                     background: isSelected
                       ? `linear-gradient(90deg, rgba(139,127,248,${velAlpha}) 0%, rgba(91,156,248,${velAlpha}) 100%)`
-                      : `linear-gradient(90deg, rgba(32,201,126,${velAlpha}) 0%, rgba(22,160,100,${velAlpha}) 100%)`,
+                      : `linear-gradient(90deg, rgba(34,201,126,${velAlpha}) 0%, rgba(91,156,248,${velAlpha * 0.72}) 100%)`,
                     border: isSelected
                       ? '1px solid rgba(255,255,255,0.7)'
                       : '1px solid rgba(255,255,255,0.18)',
                     boxShadow: isSelected
-                      ? '0 0 8px rgba(139,127,248,0.5)'
-                      : '0 1px 3px rgba(0,0,0,0.3)',
+                      ? '0 0 12px rgba(139,127,248,0.52), inset 0 1px 0 rgba(255,255,255,0.16)'
+                      : '0 2px 5px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.12)',
                     cursor: tool === 'erase' ? 'cell' : 'grab',
                     zIndex: 2,
                     boxSizing: 'border-box',
@@ -510,7 +527,7 @@ export function PianoRoll({ onClose }: { onClose: () => void }) {
                       position: 'absolute', top: '50%', right: 1,
                       transform: 'translateY(-50%)',
                       width: 1.5, height: 8, borderRadius: 1,
-                      background: 'rgba(255,255,255,0.35)',
+                      background: 'rgba(255,255,255,0.52)',
                     }} />
                   </div>
                 </div>
@@ -585,14 +602,14 @@ function VelocityLane({
               <rect
                 x={x + 1} y={laneHeight - barH}
                 width={barW} height={barH}
-                fill={isSelected ? 'rgba(139,127,248,0.85)' : 'rgba(32,201,126,0.65)'}
+                fill={isSelected ? 'rgba(139,127,248,0.88)' : 'rgba(91,156,248,0.66)'}
                 rx="1.5"
               />
               {/* Tip highlight */}
               <rect
                 x={x + 1} y={laneHeight - barH}
                 width={barW} height={2}
-                fill={isSelected ? 'rgba(200,192,255,0.9)' : 'rgba(100,240,180,0.8)'}
+                fill={isSelected ? 'rgba(238,238,255,0.9)' : 'rgba(160,210,255,0.82)'}
                 rx="1"
               />
             </g>
