@@ -61,7 +61,7 @@ export function executeWubGuideActions(actions: WubGuideAction[] | undefined): W
   }
 
   return actions.reduce<WubGuideActionResult>(
-    (_result, action) => executeAction(action),
+    (_result: WubGuideActionResult, action: WubGuideAction) => executeAction(action),
     { highlightTarget: null, label: null, didAct: false }
   );
 }

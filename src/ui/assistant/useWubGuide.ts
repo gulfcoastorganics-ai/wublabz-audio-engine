@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { create, type StateCreator } from 'zustand';
 import {
   answerWubGuidePrompt,
   WUB_GUIDE_TUTORIAL_STEPS,
@@ -43,7 +43,7 @@ function progressPatchFromActions(actions: WubGuideAction[] | undefined): Partia
   return patch;
 }
 
-export const useWubGuide = create<WubGuideStore>((set, get) => ({
+const createWubGuideStore: StateCreator<WubGuideStore> = (set, get) => ({
   beginnerModeEnabled: false,
   assistantOpen: false,
   guideMode: 'beginner',
@@ -69,7 +69,7 @@ export const useWubGuide = create<WubGuideStore>((set, get) => ({
     });
   },
 
-  setBeginnerMode(enabled) {
+  setBeginnerMode(enabled: boolean) {
     set({
       beginnerModeEnabled: enabled,
       assistantOpen: enabled ? true : false,
@@ -89,7 +89,7 @@ export const useWubGuide = create<WubGuideStore>((set, get) => ({
     set({ assistantOpen: false });
   },
 
-  setGuideMode(mode) {
+  setGuideMode(mode: 'beginner' | 'producer') {
     set({
       guideMode: mode,
       assistantOpen: true,
@@ -102,13 +102,13 @@ export const useWubGuide = create<WubGuideStore>((set, get) => ({
     set({ activeGuideTarget: target, guideFloatingLabel: target ? label ?? null : null });
   },
 
-  setActionFeedback(feedback) {
+  setActionFeedback(feedback: string | null) {
     set({ actionFeedback: feedback });
   },
 
-  askGuide(prompt) {
+  askGuide(prompt: string) {
     const response = answerWubGuidePrompt(prompt);
-    if (response.actions?.some((action) => action.type === 'startTutorial')) {
+    if (response.actions?.some((action: WubGuideAction) => action.type === 'startTutorial')) {
       get().startTutorial();
       return response;
     }
@@ -131,7 +131,7 @@ export const useWubGuide = create<WubGuideStore>((set, get) => ({
     return response;
   },
 
-  markProgress(patch) {
+  markProgress(patch: Partial<UserProgress>) {
     const next = mergeUserProgress(get().userProgress, patch);
     saveWubGuideProgress(next);
     set({ userProgress: next });
@@ -205,4 +205,6 @@ export const useWubGuide = create<WubGuideStore>((set, get) => ({
       },
     });
   },
-}));
+});
+
+export const useWubGuide = create<WubGuideStore>(createWubGuideStore);

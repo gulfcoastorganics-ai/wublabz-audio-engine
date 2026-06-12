@@ -33,7 +33,8 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "tone": "^15.1.22",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@types/node": "^25.0.0",

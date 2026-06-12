@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { create, type StateCreator } from 'zustand';
 import type {
   AudioClip,
   AudioClipEdit,
@@ -95,7 +95,7 @@ export interface StudioState {
   exportStems: () => Promise<void>;
 }
 
-export const useStudioStore = create<StudioState>((set, get) => {
+const createStudioStore: StateCreator<StudioState> = (set, get) => {
   const project = createEmptyProject('wublabz-local', 'WubLabz Studio');
 
   return {
@@ -137,21 +137,21 @@ export const useStudioStore = create<StudioState>((set, get) => {
       set({ isPlaying: false, position: 0, status: 'Stopped' });
     },
 
-    seek(seconds) {
+    seek(seconds: number) {
       const s = Math.max(0, seconds);
       studioController.seek(s);
       set({ position: s });
     },
 
-    setBpm(bpm) {
+    setBpm(bpm: number) {
       const clamped = Math.max(20, Math.min(999, bpm));
       studioController.setBpm(clamped);
-      set((state) => ({
+      set((state: StudioState) => ({
         project: { ...state.project, bpm: clamped, updatedAt: new Date().toISOString() },
       }));
     },
 
-    setLoop(start, end) {
+    setLoop(start: number, end: number) {
       studioController.setLoop(start, end);
       set({ loopEnabled: true, loopStart: start, loopEnd: end });
     },
@@ -192,12 +192,12 @@ export const useStudioStore = create<StudioState>((set, get) => {
 
     // ─── Project ──────────────────────────────────────────────────────
 
-    setProject(project) {
+    setProject(project: WubLabzProject) {
       studioController.setProject(project);
       set({ project });
     },
 
-    addTrack(type) {
+    addTrack(type: Track['type']) {
       const trackId = crypto.randomUUID();
       const { project } = get();
       const colors = [
@@ -232,11 +232,11 @@ export const useStudioStore = create<StudioState>((set, get) => {
       return trackId;
     },
 
-    updateTrack(trackId, patch) {
+    updateTrack(trackId: string, patch: Partial<Track>) {
       const { project } = get();
       const newProject: WubLabzProject = {
         ...project,
-        tracks: project.tracks.map((t) => (t.id === trackId ? { ...t, ...patch } : t)),
+        tracks: project.tracks.map((t: Track) => (t.id === trackId ? { ...t, ...patch } : t)),
         mixerState: {
           ...project.mixerState,
           [trackId]: {
@@ -251,21 +251,21 @@ export const useStudioStore = create<StudioState>((set, get) => {
       set({ project: newProject });
     },
 
-    deleteTrack(trackId) {
+    deleteTrack(trackId: string) {
       const { project, selectedClipId } = get();
       const { [trackId]: _removed, ...rest } = project.mixerState;
       const newProject: WubLabzProject = {
         ...project,
-        tracks: project.tracks.filter((t) => t.id !== trackId),
-        audioClips: project.audioClips.filter((c) => c.trackId !== trackId),
-        midiClips: project.midiClips.filter((c) => c.trackId !== trackId),
+        tracks: project.tracks.filter((t: Track) => t.id !== trackId),
+        audioClips: project.audioClips.filter((c: AudioClip) => c.trackId !== trackId),
+        midiClips: project.midiClips.filter((c: MidiClip) => c.trackId !== trackId),
         mixerState: rest,
         updatedAt: new Date().toISOString(),
       };
       studioController.setProject(newProject);
       const removedClipIds = new Set([
-        ...project.audioClips.filter((c) => c.trackId === trackId).map((c) => c.id),
-        ...project.midiClips.filter((c) => c.trackId === trackId).map((c) => c.id),
+        ...project.audioClips.filter((c: AudioClip) => c.trackId === trackId).map((c: AudioClip) => c.id),
+        ...project.midiClips.filter((c: MidiClip) => c.trackId === trackId).map((c: MidiClip) => c.id),
       ]);
       set({
         project: newProject,
@@ -273,12 +273,12 @@ export const useStudioStore = create<StudioState>((set, get) => {
       });
     },
 
-    async importFile(file) {
+    async importFile(file: File) {
       set({ status: `Importing ${file.name}…` });
       let { project } = get();
 
       // Ensure there is at least one audio track
-      let trackId = project.tracks.find((t) => t.type === 'audio')?.id;
+      let trackId = project.tracks.find((t: Track) => t.type === 'audio')?.id;
       if (!trackId) {
         trackId = get().addTrack('audio');
         project = get().project; // re-read after mutation
@@ -288,8 +288,8 @@ export const useStudioStore = create<StudioState>((set, get) => {
       const asset = imported.asset;
 
       const lastEnd = project.audioClips
-        .filter((c) => c.trackId === trackId)
-        .reduce((m, c) => Math.max(m, c.endTime), 0);
+        .filter((c: AudioClip) => c.trackId === trackId)
+        .reduce((m: number, c: AudioClip) => Math.max(m, c.endTime), 0);
 
       const clip: AudioClip = {
         id: crypto.randomUUID(),
@@ -315,7 +315,7 @@ export const useStudioStore = create<StudioState>((set, get) => {
       set({ project: newProject, status: `Imported ${file.name}` });
     },
 
-    moveClip(clipId, startTime, trackId) {
+    moveClip(clipId: string, startTime: number, trackId?: string) {
       const { project, snapEnabled, snapGrid } = get();
       const snapped = snapEnabled ? Math.round(startTime / snapGrid) * snapGrid : startTime;
       const safeStart = Math.max(0, snapped);
@@ -343,7 +343,7 @@ export const useStudioStore = create<StudioState>((set, get) => {
       set({ project: newProject });
     },
 
-    resizeClip(clipId, endTime) {
+    resizeClip(clipId: string, endTime: number) {
       const { project, snapEnabled, snapGrid } = get();
       const snapped = snapEnabled ? Math.round(endTime / snapGrid) * snapGrid : endTime;
       const MIN_DUR = 0.1;
@@ -367,9 +367,9 @@ export const useStudioStore = create<StudioState>((set, get) => {
       set({ project: newProject });
     },
 
-    splitClip(clipId) {
+    splitClip(clipId: string) {
       const { project, position } = get();
-      const clip = project.audioClips.find((c) => c.id === clipId);
+      const clip = project.audioClips.find((c: AudioClip) => c.id === clipId);
       if (!clip) return;
       const splitAt = (position > clip.startTime && position < clip.endTime)
         ? position
@@ -383,28 +383,28 @@ export const useStudioStore = create<StudioState>((set, get) => {
       };
       const newProject: WubLabzProject = {
         ...project,
-        audioClips: [...project.audioClips.filter((c) => c.id !== clipId), left, right],
+        audioClips: [...project.audioClips.filter((c: AudioClip) => c.id !== clipId), left, right],
         updatedAt: new Date().toISOString(),
       };
       studioController.setProject(newProject);
       set({ project: newProject, selectedClipId: left.id });
     },
 
-    deleteClip(clipId) {
+    deleteClip(clipId: string) {
       const { project } = get();
       const newProject: WubLabzProject = {
         ...project,
-        audioClips: project.audioClips.filter((c) => c.id !== clipId),
-        midiClips: project.midiClips.filter((c) => c.id !== clipId),
+        audioClips: project.audioClips.filter((c: AudioClip) => c.id !== clipId),
+        midiClips: project.midiClips.filter((c: MidiClip) => c.id !== clipId),
         updatedAt: new Date().toISOString(),
       };
       studioController.setProject(newProject);
       set({ project: newProject, selectedClipId: null, pianoRollClipId: null });
     },
 
-    duplicateClip(clipId) {
+    duplicateClip(clipId: string) {
       const { project } = get();
-      const audio = project.audioClips.find((c) => c.id === clipId);
+      const audio = project.audioClips.find((c: AudioClip) => c.id === clipId);
       if (audio) {
         const dur = audio.endTime - audio.startTime;
         const newClip: AudioClip = {
@@ -422,13 +422,13 @@ export const useStudioStore = create<StudioState>((set, get) => {
         set({ project: newProject, selectedClipId: newClip.id });
         return;
       }
-      const midi = project.midiClips.find((c) => c.id === clipId);
+      const midi = project.midiClips.find((c: MidiClip) => c.id === clipId);
       if (midi) {
         const dur = midi.endTime - midi.startTime;
         const newClip: MidiClip = {
           ...midi,
           id: crypto.randomUUID(),
-          notes: midi.notes.map((n) => ({ ...n, id: crypto.randomUUID() })),
+          notes: midi.notes.map((n: MidiNote) => ({ ...n, id: crypto.randomUUID() })),
           startTime: midi.endTime,
           endTime: midi.endTime + dur,
         };
@@ -442,11 +442,11 @@ export const useStudioStore = create<StudioState>((set, get) => {
       }
     },
 
-    updateClipEdit(clipId, edit) {
+    updateClipEdit(clipId: string, edit: Partial<AudioClipEdit>) {
       const { project } = get();
       const newProject: WubLabzProject = {
         ...project,
-        audioClips: project.audioClips.map((c) =>
+        audioClips: project.audioClips.map((c: AudioClip) =>
           c.id === clipId ? { ...c, edit: { ...c.edit, ...edit } } : c
         ),
         updatedAt: new Date().toISOString(),
@@ -455,11 +455,11 @@ export const useStudioStore = create<StudioState>((set, get) => {
       set({ project: newProject });
     },
 
-    resetClipEdits(clipId) {
+    resetClipEdits(clipId: string) {
       const { project } = get();
       const newProject: WubLabzProject = {
         ...project,
-        audioClips: project.audioClips.map((c) =>
+        audioClips: project.audioClips.map((c: AudioClip) =>
           c.id === clipId ? { ...c, edit: undefined } : c
         ),
         updatedAt: new Date().toISOString(),
@@ -468,7 +468,7 @@ export const useStudioStore = create<StudioState>((set, get) => {
       set({ project: newProject });
     },
 
-    addMidiClip(trackId, startTime, endTime) {
+    addMidiClip(trackId: string, startTime: number, endTime: number) {
       const { project } = get();
       const clipId = crypto.randomUUID();
       const clip: MidiClip = {
@@ -493,11 +493,11 @@ export const useStudioStore = create<StudioState>((set, get) => {
       return clipId;
     },
 
-    addMidiNote(clipId, note) {
+    addMidiNote(clipId: string, note: MidiNote) {
       const { project } = get();
       const newProject: WubLabzProject = {
         ...project,
-        midiClips: project.midiClips.map((c) =>
+        midiClips: project.midiClips.map((c: MidiClip) =>
           c.id === clipId ? { ...c, notes: [...c.notes, note] } : c
         ),
         updatedAt: new Date().toISOString(),
@@ -506,13 +506,13 @@ export const useStudioStore = create<StudioState>((set, get) => {
       set({ project: newProject });
     },
 
-    updateMidiNote(clipId, noteId, patch) {
+    updateMidiNote(clipId: string, noteId: string, patch: Partial<MidiNote>) {
       const { project } = get();
       const newProject: WubLabzProject = {
         ...project,
-        midiClips: project.midiClips.map((c) =>
+        midiClips: project.midiClips.map((c: MidiClip) =>
           c.id === clipId
-            ? { ...c, notes: c.notes.map((n) => (n.id === noteId ? { ...n, ...patch } : n)) }
+            ? { ...c, notes: c.notes.map((n: MidiNote) => (n.id === noteId ? { ...n, ...patch } : n)) }
             : c
         ),
         updatedAt: new Date().toISOString(),
@@ -521,12 +521,12 @@ export const useStudioStore = create<StudioState>((set, get) => {
       set({ project: newProject });
     },
 
-    deleteMidiNote(clipId, noteId) {
+    deleteMidiNote(clipId: string, noteId: string) {
       const { project } = get();
       const newProject: WubLabzProject = {
         ...project,
-        midiClips: project.midiClips.map((c) =>
-          c.id === clipId ? { ...c, notes: c.notes.filter((n) => n.id !== noteId) } : c
+        midiClips: project.midiClips.map((c: MidiClip) =>
+          c.id === clipId ? { ...c, notes: c.notes.filter((n: MidiNote) => n.id !== noteId) } : c
         ),
         updatedAt: new Date().toISOString(),
       };
@@ -534,7 +534,7 @@ export const useStudioStore = create<StudioState>((set, get) => {
       set({ project: newProject });
     },
 
-    updateChannel(trackId, patch) {
+    updateChannel(trackId: string, patch: Partial<MixerChannelState>) {
       const { project } = get();
       const newProject: WubLabzProject = {
         ...project,
@@ -553,32 +553,32 @@ export const useStudioStore = create<StudioState>((set, get) => {
 
     // ─── UI ───────────────────────────────────────────────────────────
 
-    setZoom(zoom) {
+    setZoom(zoom: number) {
       set({ zoom: Math.max(10, Math.min(500, zoom)) });
     },
-    setScrollLeft(scrollLeft) {
+    setScrollLeft(scrollLeft: number) {
       set({ scrollLeft: Math.max(0, scrollLeft) });
     },
-    selectClip(clipId) {
+    selectClip(clipId: string | null) {
       set({ selectedClipId: clipId });
     },
-    openPianoRoll(clipId) {
+    openPianoRoll(clipId: string | null) {
       set({ pianoRollClipId: clipId });
     },
-    setSnapEnabled(enabled) {
+    setSnapEnabled(enabled: boolean) {
       set({ snapEnabled: enabled });
     },
-    setSnapGrid(grid) {
+    setSnapGrid(grid: number) {
       set({ snapGrid: grid });
     },
-    setStatus(status) {
+    setStatus(status: string) {
       set({ status });
     },
     toggleMixer() {
-      set((s) => ({ showMixer: !s.showMixer }));
+      set((s: StudioState) => ({ showMixer: !s.showMixer }));
     },
     toggleBrowser() {
-      set((s) => ({ showBrowser: !s.showBrowser }));
+      set((s: StudioState) => ({ showBrowser: !s.showBrowser }));
     },
 
     // ─── Persistence ──────────────────────────────────────────────────
@@ -588,7 +588,7 @@ export const useStudioStore = create<StudioState>((set, get) => {
       set({ status: 'Saved' });
     },
 
-    async load(id) {
+    async load(id: string) {
       const loaded = await studioController.load(id);
       if (loaded) {
         set({ project: loaded, status: 'Loaded' });
@@ -601,7 +601,7 @@ export const useStudioStore = create<StudioState>((set, get) => {
       return serializeProjectJson(get().project);
     },
 
-    importJson(json) {
+    importJson(json: string) {
       const imported = studioController.importJson(json);
       set({ project: imported, status: 'Imported' });
     },
@@ -618,7 +618,9 @@ export const useStudioStore = create<StudioState>((set, get) => {
       set({ status: 'Stems exported' });
     },
   };
-});
+};
+
+export const useStudioStore = create<StudioState>(createStudioStore);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
